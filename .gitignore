@@ -1,0 +1,5 @@
+# macOS
+.DS_Store
+
+# Archivos de configuración de editores
+.vscode/
