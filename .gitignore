@@ -3,3 +3,10 @@
 
 # Archivos de configuración de editores
 .vscode/
+
+# Dependencias (muy importante para el futuro)
+node_modules/
+
+# Archivos de compilación
+dist/
+build/

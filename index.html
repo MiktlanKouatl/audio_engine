@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Loopstation Multi-pista</title>
+    <style>
+        body { 
+            font-family: sans-serif; 
+            background-color: #222; 
+            color: #eee; 
+            padding: 2em; 
+            text-align: center; 
+        }
+        #track-buttons-container { 
+            display: flex; 
+            justify-content: center; 
+            gap: 1em; 
+            margin-bottom: 2em; 
+        }
+        button { 
+            font-size: 1.2em; 
+            padding: 1em; 
+            cursor: pointer; 
+            border-radius: 8px; 
+            border: 2px solid #555; 
+            background-color: #333; 
+            color: white; 
+            transition: background-color 0.2s, transform 0.1s; 
+            min-width: 120px; 
+        }
+        button:active { 
+            transform: scale(0.95); 
+        }
+    </style>
+</head>
+<body>
+    <h1>Loopstation Multi-pista</h1>
+
+    <div id="track-buttons-container">
+        </div>
+
+    <div id="recordings-list"></div>
+    <p>Abre la consola para ver los logs (F12)</p>
+
+    <script type="module" src="src/main.js"></script>
+</body>
+</html>
