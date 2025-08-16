@@ -6,7 +6,6 @@ export class AudioEngine {
         this.trackCount = trackCount;
         this.tracks = [];
         this.activeTrackId = null;
-        //this.masterLoop = null; // Se ha eliminado, ya no es necesario
         this.beatLoop = null;
         this.transport = null;
         this.masterChannel = null;
@@ -30,64 +29,31 @@ export class AudioEngine {
         this.transport = Tone.getTransport();
         this.masterChannel = new Tone.Channel(0).toDestination();
         this.transport.bpm.value = 120;
+        
+        // El transporte ahora loopea según nuestro ciclo maestro
+        this.transport.loop = true;
+        this.transport.loopEnd = `${this.masterLoopLengthInBeats / this.beatsPerMeasure}m`;
+
         this.mic = new Tone.UserMedia();
         this.recorderGain = new Tone.Gain(2);
 
         for (let i = 0; i < this.trackCount; i++) {
             const channel = new Tone.Channel().connect(this.masterChannel);
             const player = new Tone.Player().connect(channel);
-            this.tracks.push({
-                id: i,
-                player: player,
-                channel: channel,
-                state: 'empty',
-                quantize: 'float'
-            });
+            this.tracks.push({ id: i, player, channel, state: 'empty' });
         }
         
         await this.mic.open();
         this.mic.connect(this.recorderGain);
 
-        this.beatLoop = new Tone.Loop(time => {
-            this.onBeatTick(time);
-        }, '4n').start(0);
+        this.beatLoop = new Tone.Loop(time => this.onBeatTick(time), '4n').start(0);
 
         this.isSetup = true;
         console.log(`AudioEngine listo. Ciclo maestro de ${this.masterLoopLengthInBeats} tiempos.`);
     }
 
-    async onBeatTick(time) {
-        if (this.state === 'armed') {
-            this.recorder.start();
-            this.setState('recording');
-            console.log(`%c[Loop] ¡GRABANDO en Pista ${this.activeTrackId}!`, 'color: #ff4136; font-weight: bold;');
-        }
-        else if (this.state === 'stopping') {
-            const blob = await this.recorder.stop();
-            this.recorderGain.disconnect(this.recorder);
-            this.recorder.dispose();
-
-            const url = URL.createObjectURL(blob);
-            if (this.onClipReady) this.onClipReady(this.activeTrackId, url);
-            
-            const activeTrack = this.tracks[this.activeTrackId];
-            await activeTrack.player.load(url);
-            
-            if (activeTrack.quantize === 'strict') {
-                activeTrack.player.loopEnd = `${this.masterLoopLengthInBeats}n`;
-            }
-            
-            activeTrack.player.loop = true;
-            
-            // --- CORRECCIÓN DEL "PULSO FANTASMA" ---
-            // Se añade el offset para compensar la latencia de grabación.
-            activeTrack.player.sync().start(time, "0.05");
-
-            activeTrack.state = 'has_loop';
-            this.setState('idle');
-            console.log(`%c[Loop] Pista ${this.activeTrackId} iniciada.`, 'color: #2ecc40; font-weight: bold;');
-        }
-        
+    onBeatTick(time) {
+        // Esta función ahora solo se encarga de los visualizadores
         const [bar, beat] = this.transport.position.split(':').map(Number);
         const currentBeatInMeasure = Math.floor(beat);
         const absoluteBeat = (bar * this.beatsPerMeasure) + currentBeatInMeasure;
@@ -99,23 +65,16 @@ export class AudioEngine {
 
     setState(newState) {
         this.state = newState;
-        if (this.onStateChange) {
-            this.onStateChange(this.state, this.activeTrackId);
-        }
+        if (this.onStateChange) this.onStateChange(this.state, this.activeTrackId);
     }
-
     async toggleTransport() {
-        if (!this.isSetup) {
-            await this._setup();
-        }
+        if (!this.isSetup) await this._setup();
 
         if (this.isPlaying) {
             this.transport.stop();
             this.transport.position = 0;
             this.isPlaying = false;
         } else {
-            // --- CORRECCIÓN DEL REINICIO DE LOOPS ---
-            // "Despertamos" a todos los loops activos antes de arrancar.
             this.tracks.forEach(track => {
                 if (track.state === 'has_loop' && track.player.loaded && !track.channel.mute) {
                     track.player.sync().start(0);
@@ -124,39 +83,48 @@ export class AudioEngine {
             this.transport.start("+0.1");
             this.isPlaying = true;
         }
-        
         console.log(`Transporte debería estar sonando: ${this.isPlaying}`);
     }
 
     setMasterLoopLength(beats) {
+        if (!this.transport) return;
         this.masterLoopLengthInBeats = beats;
+        this.transport.loopEnd = `${beats / this.beatsPerMeasure}m`;
         console.log(`Nueva longitud del ciclo maestro: ${beats} tiempos.`);
     }
 
     async toggleRecording(trackId) {
-        if (!this.isSetup) await this._setup();
-
-        if (!this.isPlaying) {
-            console.warn("El transporte está detenido. Presiona Play para grabar.");
+        if (!this.isPlaying || this.state !== 'idle') {
+            console.warn("Solo se puede armar una pista cuando el transporte está sonando y el motor está inactivo.");
             return;
         }
 
-        const track = this.tracks[trackId];
-        if (!track) return;
+        this.activeTrackId = trackId;
+        this.recorder = new Tone.Recorder();
+        this.recorderGain.connect(this.recorder);
+        
+        // Agendamos el inicio y el final de la grabación de forma precisa
+        this.transport.scheduleOnce(time => {
+            this.recorder.start(time);
+            this.setState('recording');
+            console.log(`Grabación iniciada en Pista ${trackId} en t=${time}`);
+        }, "0"); // Inicia en el próximo inicio de ciclo (tiempo 0)
 
-        if (track.state === 'has_loop' && this.state === 'idle') {
-            this.toggleMute(trackId);
-            return;
-        }
+        this.transport.scheduleOnce(async (time) => {
+            const blob = await this.recorder.stop();
+            this.recorder.dispose();
 
-        if (this.state === 'recording' && this.activeTrackId === trackId) {
-            this.setState('stopping');
-        } else if (this.state === 'idle') {
-            this.activeTrackId = trackId;
-            this.recorder = new Tone.Recorder();
-            this.recorderGain.connect(this.recorder);
-            this.setState('armed');
-        }
+            const url = URL.createObjectURL(blob);
+            const track = this.tracks[this.activeTrackId];
+            await track.player.load(url);
+            track.player.loop = true;
+            track.player.sync().start(0); // Sincroniza el player para que siempre inicie en el tiempo 0 del transporte
+            track.state = 'has_loop';
+            this.setState('idle');
+            console.log(`Grabación finalizada y loopeando en Pista ${trackId}.`);
+        }, `@${this.masterLoopLengthInBeats}n`); // Detiene justo al final del ciclo
+
+        this.setState('armed');
     }
 
     // El resto de los métodos como setBPM, setTrackVolume, etc., no necesitan cambios...
