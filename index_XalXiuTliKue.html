@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Secuenciador con Mezclador</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <style>
+        body { font-family: monospace; background-color: #1e1e1e; color: #d4d4d4; padding: 20px; }
+        .main-controls button { background-color: #0e639c; color: white; border: none; padding: 10px 20px; font-size: 16px; cursor: pointer; margin-bottom: 20px; }
+        .main-controls button:hover { background-color: #1177bb; }
+        
+        /* --- ESTILOS PARA LOS CONTROLES DE CANAL --- */
+        #channel-controls { display: flex; flex-wrap: wrap; gap: 15px; }
+        .channel-strip { background-color: #252526; padding: 15px; border-radius: 5px; border-left: 4px solid #0e639c; }
+        .channel-strip h3 { margin: 0 0 10px 0; }
+        .channel-strip button { padding: 5px 10px; margin: 0 2px; }
+        .channel-strip .mute-btn.muted { background-color: #c9302c; }
+        .volume-display { display: inline-block; width: 40px; text-align: center; background: #333; padding: 5px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <h1>Secuenciador con Mezclador</h1>
+    <div class="main-controls">
+        <button id="playButton">Reproducir / Detener</button>
+    </div>
+    
+    <div id="channel-controls"></div>
+
+    <script>
+    //======================================================================
+    // --- ÁREA DE TRABAJO DEL USUARIO ---
+    //======================================================================
+    const proyecto = {
+        bpm: 100,
+        canales: [
+            {
+                nombre: 'Melodia Principal',
+                instrumento: 'lead1',
+                notas: [
+                    { time: '0:0', note: 'E5', duration: '4n' }, { time: '0:1', note: 'E5', duration: '4n' },
+                    { time: '0:2', note: 'F#5', duration: '8n' }, { time: '0:2:2', note: 'E5', duration: '8n' },
+                    { time: '0:3', note: 'D5', duration: '8n' }, { time: '0:3:2', note: 'C#5', duration: '4n' },
+                    { time: '1:0:2', note: 'B4', duration: '8n' }, { time: '1:1', note: 'C#5', duration: '4n.' },
+                    { time: '2:0', note: 'B4', duration: '4n' }, { time: '2:1', note: 'B4', duration: '4n' }, 
+                    { time: '2:2', note: 'A4', duration: '8n' }, { time: '2:2:2', note: 'E5', duration: '8n' },
+                    { time: '2:3', note: 'D5', duration: '8n' }, { time: '2:3:2', note: 'C#5', duration: '4n' },
+                    { time: '3:0:2', note: 'B4', duration: '8n' }, { time: '3:1', note: 'C#5', duration: '4n' }
+                ]
+            },
+            {
+                nombre: 'Linea de Base',
+                instrumento: 'base',
+                notas: [
+                    { time: '0:0', note: 'E3', duration: '2n.' },
+                    { time: '0:3', note: 'F#3', duration: '4n' },
+                    { time: '1:0', note: 'C#3', duration: '1n' },
+                    { time: '2:0', note: 'B2', duration: '2n.' },
+                    { time: '2:3', note: 'A2', duration: '4n' },
+                    { time: '3:0', note: 'C#3', duration: '2n.' }
+                ]
+            },
+            {
+                nombre: 'Armonia (Tercera)',
+                instrumento: 'lead3',
+                notas: [
+                    { time: '0:0', note: 'G#5', duration: '4n' }, { time: '0:1', note: 'G#5', duration: '4n' },
+                    { time: '0:2', note: 'A5', duration: '8n' }, { time: '0:2:2', note: 'G#5', duration: '8n' },
+                    { time: '0:3', note: 'F#5', duration: '8n' }, { time: '0:3:2', note: 'E5', duration: '4n' },
+                    { time: '1:0:2', note: 'D5', duration: '8n' }, { time: '1:1', note: 'E5', duration: '4n.' },
+                    { time: '2:0', note: 'D5', duration: '4n' }, { time: '2:1', note: 'D5', duration: '4n' },
+                    { time: '2:2', note: 'C#5', duration: '8n' }, { time: '2:2:2', note: 'G#5', duration: '8n' },
+                    { time: '2:3', note: 'F#5', duration: '8n' }, { time: '2:3:2', note: 'E5', duration: '4n' },
+                    { time: '3:0:2', note: 'D5', duration: '8n' }, { time: '3:1', note: 'E5', duration: '4n' }
+                ]
+    
+            },
+            {
+                nombre: 'Armonia (Segunda)',
+                instrumento: 'lead2',
+                notas: [
+                    { time: '0:0', note: 'F#4', duration: '4n' }, { time: '0:1', note: 'F#4', duration: '4n' },
+                    { time: '0:2', note: 'G#4', duration: '8n' }, { time: '0:2:2', note: 'F#4', duration: '8n' },
+                    { time: '0:3', note: 'E4', duration: '8n' }, { time: '0:3:2', note: 'D4', duration: '4n' },
+                    { time: '1:0:2', note: 'C#4', duration: '8n' }, { time: '1:1', note: 'D4', duration: '4n.' },
+                    { time: '2:0', note: 'C#4', duration: '4n' }, { time: '2:1', note: 'C#4', duration: '4n' },
+                    { time: '2:2', note: 'B3', duration: '8n' }, { time: '2:2:2', note: 'F#4', duration: '8n' },
+                    { time: '2:3', note: 'E4', duration: '8n' }, { time: '2:3:2', note: 'D4', duration: '4n' },
+                    { time: '3:0:2', note: 'C#4', duration: '8n' }, { time: '3:1', note: 'D4', duration: '4n' }
+                ]
+            },
+            {
+                nombre: 'Contramelodía (Pads)',
+                instrumento: 'pads',
+                notas: [
+                    { time: '0:0', note: 'B3', duration: '1n' },
+                    { time: '1:0', note: 'A3', duration: '1n' },
+                    { time: '2:0', note: 'F#3', duration: '1n' },
+                    { time: '3:0', note: 'D3', duration: '1n' }
+                ]
+            },
+            {
+                nombre: 'Bombo',
+                instrumento: 'kick',
+                notas: [
+                    // Compás 1
+                    { time: '0:0', note: null, duration: '8n' },
+                    { time: '0:1', note: null, duration: '8n' },
+                    { time: '0:2', note: null, duration: '8n' },
+                    { time: '0:3', note: null, duration: '8n' },
+                    // Compás 2
+                    { time: '1:0', note: null, duration: '8n' },
+                    { time: '1:1', note: null, duration: '8n' },
+                    { time: '1:2', note: null, duration: '8n' },
+                    { time: '1:3', note: null, duration: '8n' },
+                    // Compás 3
+                    { time: '2:0', note: null, duration: '8n' },
+                    { time: '2:1', note: null, duration: '8n' },
+                    { time: '2:2', note: null, duration: '8n' },
+                    { time: '2:3', note: null, duration: '8n' },
+                    // Compás 4
+                    { time: '3:0', note: null, duration: '8n' },
+                    { time: '3:1', note: null, duration: '8n' },
+                    { time: '3:2', note: null, duration: '8n' },
+                    { time: '3:3', note: null, duration: '8n' }
+                ]
+            },
+            {
+                nombre: 'Ritmo Rapeado (Snare)',
+                instrumento: 'snare',
+                notas: [
+                    // Compás 1
+                    { time: '0:0:2', note: null, duration: '16n' },
+                    { time: '0:1:3', note: null, duration: '16n' },
+                    { time: '0:2:2', note: null, duration: '16n' },
+                    { time: '0:3:1', note: null, duration: '16n' },
+                    { time: '0:3:3', note: null, duration: '16n' },
+                    // Compás 2
+                    { time: '1:0:2', note: null, duration: '16n' },
+                    { time: '1:1:3', note: null, duration: '16n' },
+                    { time: '1:2:2', note: null, duration: '16n' },
+                    { time: '1:3:1', note: null, duration: '16n' },
+                    { time: '1:3:3', note: null, duration: '16n' },
+                    // Compás 3
+                    { time: '2:0:2', note: null, duration: '16n' },
+                    { time: '2:1:3', note: null, duration: '16n' },
+                    { time: '2:2:2', note: null, duration: '16n' },
+                    { time: '2:3:1', note: null, duration: '16n' },
+                    { time: '2:3:3', note: null, duration: '16n' },
+                    // Compás 4
+                    { time: '3:0:2', note: null, duration: '16n' },
+                    { time: '3:1:3', note: null, duration: '16n' },
+                    { time: '3:2:2', note: null, duration: '16n' },
+                    { time: '3:3:1', note: null, duration: '16n' },
+                    { time: '3:3:3', note: null, duration: '16n' },
+                ]
+            },
+            {
+                nombre: 'Hi-Hats',
+                instrumento: 'hihat',
+                notas: [
+                    // Compás 1
+                    { time: '0:0:2', note: null, duration: '8n' }, { time: '0:1:2', note: null, duration: '8n' },
+                    { time: '0:2:2', note: null, duration: '8n' }, { time: '0:3:2', note: null, duration: '8n' },
+                    // Compás 2
+                    { time: '1:0:2', note: null, duration: '8n' }, { time: '1:1:2', note: null, duration: '8n' },
+                    { time: '1:2:2', note: null, duration: '8n' }, { time: '1:3:2', note: null, duration: '8n' },
+                    // Compás 3
+                    { time: '2:0:2', note: null, duration: '8n' }, { time: '2:1:2', note: null, duration: '8n' },
+                    { time: '2:2:2', note: null, duration: '8n' }, { time: '2:3:2', note: null, duration: '8n' },
+                    // Compás 4
+                    { time: '3:0:2', note: null, duration: '8n' }, { time: '3:1:2', note: null, duration: '8n' },
+                    { time: '3:2:2', note: null, duration: '8n' }, { time: '3:3:2', note: null, duration: '8n' },
+                ]
+            }
+        ]
+    };
+    //======================================================================
+    // --- FIN DEL ÁREA DE TRABAJO ---
+    //======================================================================
+
+    // --- MOTOR DEL SECUENCIADOR Y MEZCLADOR ---
+    const playButton = document.getElementById('playButton');
+    const controlsContainer = document.getElementById('channel-controls');
+    let isInitialized = false;
+
+    // Ahora, cada instrumento tiene su propio sintetizador Y su propio canal de mezcla
+    const instrumentos = {
+        lead1: {
+            synth: new Tone.PolySynth(Tone.Synth, { oscillator: { type: 'sawtooth' } }),
+            channel: new Tone.Channel({ volume: -6, mute: false }).toDestination()
+        },
+        lead2: {
+            synth: new Tone.PolySynth(Tone.Synth, { oscillator: { type: 'sawtooth' } }),
+            channel: new Tone.Channel({ volume: -6, mute: false }).toDestination()
+        },
+        lead3: {
+            synth: new Tone.PolySynth(Tone.Synth, { oscillator: { type: 'sawtooth' } }),
+            channel: new Tone.Channel({ volume: -6, mute: false }).toDestination()
+        },
+        base: {
+            synth: new Tone.PolySynth(Tone.Synth, { oscillator: { type: 'fmsquare' } }),
+            channel: new Tone.Channel({ volume: -6, mute: false }).toDestination()
+        },
+        pads: {
+            synth: new Tone.PolySynth(Tone.Synth, { oscillator: { type: 'triangle' } }),
+            channel: new Tone.Channel({ volume: -10, mute: false }).toDestination()
+        },
+        bass: {
+            synth: new Tone.MonoSynth({ oscillator: { type: 'fmsquare', harmonicity: 1.2 } }),
+            channel: new Tone.Channel({ volume: -3, mute: false }).toDestination()
+        },
+        // Kit de Batería
+        kick: { synth: new Tone.MembraneSynth({ octaves: 10, pitchDecay: 0.05 }), channel: new Tone.Channel({ volume: -3 }).toDestination() },
+        snare: { synth: new Tone.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.005, decay: 0.1, sustain: 0 } }), channel: new Tone.Channel({ volume: -6 }).toDestination() },
+        hihat: { synth: new Tone.MetalSynth({ frequency: 200, envelope: { attack: 0.001, decay: 0.1, release: 0.01 }, harmonicity: 5.1, modulationIndex: 32, resonance: 4000, octaves: 1.5 }), channel: new Tone.Channel({ volume: -15 }).toDestination() }
+    };
+
+    // Conectar cada sintetizador a su canal de mezcla
+    Object.values(instrumentos).forEach(inst => inst.synth.connect(inst.channel));
+
+    // --- LÓGICA PARA CREAR LA INTERFAZ DE CONTROLES ---
+    function crearControles() {
+        controlsContainer.innerHTML = ''; // Limpiar controles antiguos
+        proyecto.canales.forEach(canal => {
+            const inst = instrumentos[canal.instrumento];
+            if (!inst) return;
+
+            const strip = document.createElement('div');
+            strip.className = 'channel-strip';
+            strip.innerHTML = `
+                <h3>${canal.nombre}</h3>
+                <button class="mute-btn" data-channel="${canal.nombre}">Mute</button>
+                <button class="vol-down" data-channel="${canal.nombre}">-</button>
+                <span class="volume-display" id="vol-${canal.nombre}">${inst.channel.volume.value.toFixed(0)}</span>
+                <button class="vol-up" data-channel="${canal.nombre}">+</button>
+            `;
+            controlsContainer.appendChild(strip);
+        });
+    }
+
+    // --- MANEJO DE CLICS EN LOS CONTROLES ---
+    controlsContainer.addEventListener('click', e => {
+        const target = e.target;
+        const channelName = target.dataset.channel;
+        if (!channelName) return;
+
+        const canal = proyecto.canales.find(c => c.nombre === channelName);
+        const inst = instrumentos[canal.instrumento];
+        const volDisplay = document.getElementById(`vol-${channelName}`);
+
+        if (target.classList.contains('mute-btn')) {
+            inst.channel.mute = !inst.channel.mute;
+            target.classList.toggle('muted', inst.channel.mute);
+        } else if (target.classList.contains('vol-down')) {
+            inst.channel.volume.value -= 2;
+            volDisplay.textContent = inst.channel.volume.value.toFixed(0);
+        } else if (target.classList.contains('vol-up')) {
+            inst.channel.volume.value += 2;
+            volDisplay.textContent = inst.channel.volume.value.toFixed(0);
+        }
+    });
+    
+    // Función principal para cargar el proyecto en Tone.js
+    function cargarProyecto() {
+        Tone.Transport.cancel();
+        Tone.Transport.bpm.value = proyecto.bpm;
+        Tone.Transport.loop = true;
+        Tone.Transport.loopEnd = '4m';
+
+        proyecto.canales.forEach(canal => {
+            const inst = instrumentos[canal.instrumento];
+            if (inst) {
+                new Tone.Part((time, value) => {
+                    if (value.note) {
+                        // Para instrumentos melódicos
+                        inst.synth.triggerAttackRelease(value.note, value.duration, time);
+                    } else {
+                        // Para instrumentos de percusión donde la nota es null
+                        inst.synth.triggerAttackRelease(value.duration, time);
+                    }
+                }, canal.notas).start(0);
+            }
+        });
+        isInitialized = true;
+    }
+
+    // Manejo del botón principal de reproducción
+    playButton.addEventListener('click', async () => {
+        if (Tone.context.state !== 'running') {
+            await Tone.start();
+        }
+        if (!isInitialized) {
+            cargarProyecto();
+        }
+        if (Tone.Transport.state !== 'started') {
+            Tone.Transport.start();
+            playButton.textContent = 'Detener';
+        } else {
+            Tone.Transport.stop();
+            Tone.Transport.position = 0;
+            playButton.textContent = 'Reproducir';
+        }
+    });
+
+    // Crear la interfaz al cargar la página
+    crearControles();
+    </script>
+</body>
+</html>
