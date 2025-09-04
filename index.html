@@ -2,47 +2,54 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Loopstation Multi-pista</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AudioEngine V2 - El Núcleo</title>
     <style>
         body { 
-            font-family: sans-serif; 
-            background-color: #222; 
-            color: #eee; 
-            padding: 2em; 
-            text-align: center; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #121212; 
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            text-align: center;
         }
-        #track-buttons-container { 
-            display: flex; 
-            justify-content: center; 
-            gap: 1em; 
-            margin-bottom: 2em; 
+        button {
+            font-size: 1.5rem;
+            padding: 1rem 2rem;
+            margin: 1rem;
+            cursor: pointer;
+            border-radius: 8px;
+            border: 2px solid #555;
+            background-color: #333;
+            color: white;
+            transition: background-color 0.2s, transform 0.1s;
         }
-        button { 
-            font-size: 1.2em; 
-            padding: 1em; 
-            cursor: pointer; 
-            border-radius: 8px; 
-            border: 2px solid #555; 
-            background-color: #333; 
-            color: white; 
-            transition: background-color 0.2s, transform 0.1s; 
-            min-width: 120px; 
-        }
-        button:active { 
-            transform: scale(0.95); 
+        button:hover { background-color: #444; }
+        button:active { transform: scale(0.95); }
+        #status-display {
+            font-family: monospace;
+            font-size: 1.2rem;
+            margin-top: 2rem;
+            color: #888;
+            min-height: 1.5em; /* Evita que la página salte al cambiar el texto */
         }
     </style>
 </head>
 <body>
-    <h1>Loopstation Multi-pista</h1>
+    <h1>Fase 0: El Núcleo</h1>
+    <p>Estableciendo el Transporte y la Arquitectura Base</p>
 
-    <div id="track-buttons-container">
-        </div>
-
-    <div id="recordings-list"></div>
-    <p>Abre la consola para ver los logs (F12)</p>
-
+    <div>
+        <button id="start-button">▶ Iniciar Motor de Audio</button>
+        <button id="play-stop-button" style="display: none;">Play</button>
+    </div>
+    
+    <div id="status-display">Estado: Inactivo</div>
+    
     <script type="module" src="src/main.js"></script>
-
 </body>
-</html> 
+</html>

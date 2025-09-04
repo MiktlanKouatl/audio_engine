@@ -1,71 +1,73 @@
 // main.js
+
 import { AudioEngine } from './engines/AudioEngine.js';
-import { UIManager } from './managers/UIManager.js';
+import { Track } from './modules/Track.js';
 
-// 1. Inicializamos los Módulos Principales
-const audioEngine = new AudioEngine(4);
-const uiManager = new UIManager(audioEngine);
+// Envolvemos toda la lógica en una función 'init' para asegurar
+// que el DOM esté completamente cargado antes de ejecutar el código.
+function init() {
+    console.log("Inicializando aplicación...");
 
-// --- INICIO DEL CÓDIGO RESTAURADO ---
+    // 1. Obtenemos las referencias a los elementos del DOM que necesitamos.
+    const startButton = document.getElementById('start-button');
+    const playStopButton = document.getElementById('play-stop-button');
+    const statusDisplay = document.getElementById('status-display');
 
-// 2. Conectamos la UI de Botones de Pista
-const trackButtonsContainer = document.getElementById('track-buttons-container');
+    // 2. Creamos una instancia de nuestro motor de audio.
+    const audioEngine = new AudioEngine();
+    // --- ¡AQUÍ ESTÁ LA MAGIA! ---
 
-// Creamos los botones para cada pista dinámicamente
-for (let i = 0; i < audioEngine.trackCount; i++) {
-    const button = document.createElement('button');
-    button.id = `track-btn-${i}`;
-    button.dataset.trackId = i;
-    button.textContent = `Pista ${i + 1}`;
-    trackButtonsContainer.appendChild(button);
-}
+    // 1. Definimos los patrones musicales fuera de las clases.
+    //    Esto es un buen ejemplo de separación de datos y lógica.
+    const melodyPattern = ["C4", "E4", "G4", "B4", "C5", null, "G4", null];
+    const bassPattern = ["C2", null, "G2", null, "A2", null, "G2", null];
 
-// Escuchamos clics en el contenedor de botones (event delegation)
-trackButtonsContainer.addEventListener('click', (event) => {
-    if (event.target.tagName === 'BUTTON') {
-        const trackId = parseInt(event.target.dataset.trackId);
-        audioEngine.toggleRecording(trackId);
-    }
-});
+    // 2. Creamos dos instancias de Track, cada una con su propio patrón.
+    const melodyTrack = new Track("Melodía", melodyPattern);
+    const bassTrack = new Track("Bajo", bassPattern);
 
-// La UI ahora se actualiza en base al estado del motor Y de cada pista
-audioEngine.onStateChange = (engineState, activeTrackId) => {
-    const buttons = document.querySelectorAll('#track-buttons-container button');
-    buttons.forEach((btn, id) => {
-        const track = audioEngine.tracks[id];
+    // 3. Añadimos ambas pistas al motor.
+    audioEngine.addTrack(melodyTrack);
+    audioEngine.addTrack(bassTrack);
 
-        if (engineState === 'armed' && id === activeTrackId) {
-            btn.style.backgroundColor = '#FFC107';
-            btn.textContent = `Armado ${id + 1}`;
-        } else if (engineState === 'recording' && id === activeTrackId) {
-            btn.style.backgroundColor = '#F44336';
-            btn.textContent = `Grabando ${id + 1}`;
-        } else {
-            if (track.state === 'has_loop') {
-                btn.style.backgroundColor = track.channel.mute ? '#555' : '#01FF70';
-                btn.textContent = `Loop ${id + 1}`;
-            } else {
-                btn.style.backgroundColor = '';
-                btn.textContent = `Pista ${id + 1}`;
-            }
+    // ----------------------------
+
+    // 3. Añadimos el Event Listener al botón.
+    // La función del evento debe ser 'async' para poder usar 'await'.
+    startButton.addEventListener('click', async () => {
+        try {
+            // Llamamos al método start() de nuestro motor y esperamos a que termine.
+            await audioEngine.start();
+            
+            // Si todo va bien, actualizamos la UI para dar feedback al usuario.
+            statusDisplay.textContent = "Motor de Audio: LISTO";
+            startButton.style.display = 'none'; // Ocultamos el botón de inicio
+            playStopButton.style.display = 'inline-block'; // ¡Mostramos el de Play/Stop!
+
+            //startButton.textContent = "Motor Iniciado";
+            //startButton.disabled = true; // Deshabilitamos el botón una vez usado.
+            //startButton.style.backgroundColor = '#01FF70'; // Un verde brillante
+            //startButton.style.color = '#111';
+
+        } catch (error) {
+            console.error("No se pudo iniciar el motor de audio:", error);
+            statusDisplay.textContent = "Error al iniciar el motor.";
         }
     });
-};
+    playStopButton.addEventListener('click', () => {
+        audioEngine.toggleTransport();
 
-window.addEventListener('keydown', (event) => {
-    // Verificamos si la tecla es un número del 1 al 4
-    const keyNumber = parseInt(event.key);
-    if (keyNumber >= 1 && keyNumber <= audioEngine.trackCount) {
-        // Mapeamos la tecla al ID de la pista (tecla '1' -> trackId 0)
-        const trackId = keyNumber - 1;
-        
-        console.log(`Tecla '${event.key}' presionada, activando Pista ${trackId + 1}`);
-        audioEngine.toggleRecording(trackId);
-        
-        // Prevenimos que el número se escriba en algún campo de texto
-        event.preventDefault();
-    }
-});
+        // Actualizamos el texto del botón y el estado según el transporte.
+        const transportState = audioEngine.getTransportState();
+        if (transportState.state === 'started') {
+            playStopButton.textContent = 'Stop';
+            statusDisplay.textContent = 'Reproduciendo...';
+        } else {
+            playStopButton.textContent = 'Play';
+            statusDisplay.textContent = 'Detenido.';
+        }
+    });
+}
 
-// 3. Arrancamos el UI Manager
-uiManager.init();
+// Nos aseguramos de llamar a init() solo cuando la página se haya cargado por completo.
+window.addEventListener('load', init);
