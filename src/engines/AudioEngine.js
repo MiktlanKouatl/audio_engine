@@ -1,41 +1,44 @@
 // src/engines/AudioEngine.js
 import * as Tone from 'tone';
+import { Sequencer } from '../modules/Sequencer.js';
+import { RecorderModule } from '../modules/RecorderModule.js';
 
 export class AudioEngine {
     constructor(trackCount = 4) {
         this.trackCount = trackCount;
         this.tracks = [];
         this.activeTrackId = null;
-        this.beatLoop = null;
+        this.sequencer = null;
+        this.recorderModule = null;
         this.transport = null;
         this.masterChannel = null;
         this.mic = null;
-        this.recorder = null;
-        this.recorderGain = null;
+        
+        // Estados y configuraciones
         this.state = 'idle';
         this.isPlaying = false;
         this.isSetup = false;
         this.beatsPerMeasure = 4;
         this.masterLoopLengthInBeats = 16;
-        this.onClipReady = null;
+
+        // Callbacks para la UI
         this.onStateChange = null;
-        this.onBeatChange = null;
-        this.onMasterProgressChange = null;
+        this.onClipReady = null;
     }
 
+    /**
+     * Inicializa todos los componentes de Tone.js.
+     * Se llama automáticamente en la primera interacción del usuario.
+     */
     async _setup() {
         if (this.isSetup) return;
         await Tone.start();
+        
         this.transport = Tone.getTransport();
         this.masterChannel = new Tone.Channel(0).toDestination();
         this.transport.bpm.value = 120;
-        
-        // El transporte ahora loopea según nuestro ciclo maestro
         this.transport.loop = true;
         this.transport.loopEnd = `${this.masterLoopLengthInBeats / this.beatsPerMeasure}m`;
-
-        this.mic = new Tone.UserMedia();
-        this.recorderGain = new Tone.Gain(2);
 
         for (let i = 0; i < this.trackCount; i++) {
             const channel = new Tone.Channel().connect(this.masterChannel);
@@ -43,33 +46,34 @@ export class AudioEngine {
             this.tracks.push({ id: i, player, channel, state: 'empty' });
         }
         
+        this.sequencer = new Sequencer(this.tracks, this.transport);
+        this.sequencer.init();
+        
+        // Creamos el micrófono y el módulo de grabación
+        this.mic = new Tone.UserMedia();
         await this.mic.open();
-        this.mic.connect(this.recorderGain);
-
-        this.beatLoop = new Tone.Loop(time => this.onBeatTick(time), '4n').start(0);
+        this.recorderModule = new RecorderModule(this.mic);
 
         this.isSetup = true;
-        console.log(`AudioEngine listo. Ciclo maestro de ${this.masterLoopLengthInBeats} tiempos.`);
     }
 
-    onBeatTick(time) {
-        // Esta función ahora solo se encarga de los visualizadores
-        const [bar, beat] = this.transport.position.split(':').map(Number);
-        const currentBeatInMeasure = Math.floor(beat);
-        const absoluteBeat = (bar * this.beatsPerMeasure) + currentBeatInMeasure;
-        const currentMasterBeat = absoluteBeat % this.masterLoopLengthInBeats;
-        
-        if (this.onBeatChange) this.onBeatChange(currentBeatInMeasure);
-        if (this.onMasterProgressChange) this.onMasterProgressChange(currentMasterBeat, this.masterLoopLengthInBeats);
-    }
-
+    /**
+     * Comunica los cambios de estado a la UI.
+     */
     setState(newState) {
         this.state = newState;
-        if (this.onStateChange) this.onStateChange(this.state, this.activeTrackId);
+        if (this.onStateChange) {
+            this.onStateChange(this.state, this.activeTrackId);
+        }
+        console.log(`Nuevo estado del motor: ${newState}`);
     }
+
+    /**
+     * Inicia o detiene el transporte principal y la reproducción.
+     */
     async toggleTransport() {
         if (!this.isSetup) await this._setup();
-
+        
         if (this.isPlaying) {
             this.transport.stop();
             this.transport.position = 0;
@@ -83,65 +87,77 @@ export class AudioEngine {
             this.transport.start("+0.1");
             this.isPlaying = true;
         }
-        console.log(`Transporte debería estar sonando: ${this.isPlaying}`);
+        console.log(`Transporte sonando: ${this.isPlaying}`);
     }
+
+    /**
+     * Inicia el ciclo de grabación en una pista específica.
+     */
+    async toggleRecording(trackId) {
+        if (!this.isSetup) await this._setup();
+        if (!this.isPlaying || this.state !== 'idle') {
+            console.warn("El motor está ocupado o el transporte está detenido.");
+            return;
+        }
+        const track = this.tracks[trackId];
+        if (!track) return;
+        if (track.state === 'has_loop') {
+             this.toggleMute(trackId);
+             return;
+        }
+
+        // 1. Notificamos a la UI que estamos ocupados "grabando".
+        this.activeTrackId = trackId;
+        this.setState('recording'); // El botón se pondrá rojo.
+
+        // 2. Le pedimos a nuestra herramienta que nos dé un clip de audio.
+        const duration = `${this.masterLoopLengthInBeats / this.beatsPerMeasure}m`;
+        const audioBlob = await this.recorderModule.record(duration);
+        
+        // 3. Cuando la grabación termina, cargamos el Blob en el player.
+        const url = URL.createObjectURL(audioBlob);
+        await track.player.load(url);
+        track.player.loop = true;
+        track.state = 'has_loop';
+        
+        console.log(`Audio grabado y cargado en Pista ${trackId}.`);
+
+        // 4. El motor vuelve a estar libre.
+        this.setState('idle');
+    }
+    
+    // --- Métodos de Control para la UI ---
 
     setMasterLoopLength(beats) {
         if (!this.transport) return;
         this.masterLoopLengthInBeats = beats;
         this.transport.loopEnd = `${beats / this.beatsPerMeasure}m`;
-        console.log(`Nueva longitud del ciclo maestro: ${beats} tiempos.`);
-    }
-
-    async toggleRecording(trackId) {
-        if (!this.isPlaying || this.state !== 'idle') {
-            console.warn("Solo se puede armar una pista cuando el transporte está sonando y el motor está inactivo.");
-            return;
+        if (this.sequencer && this.sequencer.part) {
+            this.sequencer.part.loopEnd = this.transport.loopEnd;
         }
-
-        this.activeTrackId = trackId;
-        this.recorder = new Tone.Recorder();
-        this.recorderGain.connect(this.recorder);
-        
-        // Agendamos el inicio y el final de la grabación de forma precisa
-        this.transport.scheduleOnce(time => {
-            this.recorder.start(time);
-            this.setState('recording');
-            console.log(`Grabación iniciada en Pista ${trackId} en t=${time}`);
-        }, "0"); // Inicia en el próximo inicio de ciclo (tiempo 0)
-
-        this.transport.scheduleOnce(async (time) => {
-            const blob = await this.recorder.stop();
-            this.recorder.dispose();
-
-            const url = URL.createObjectURL(blob);
-            const track = this.tracks[this.activeTrackId];
-            await track.player.load(url);
-            track.player.loop = true;
-            track.player.sync().start(0); // Sincroniza el player para que siempre inicie en el tiempo 0 del transporte
-            track.state = 'has_loop';
-            this.setState('idle');
-            console.log(`Grabación finalizada y loopeando en Pista ${trackId}.`);
-        }, `@${this.masterLoopLengthInBeats}n`); // Detiene justo al final del ciclo
-
-        this.setState('armed');
     }
 
-    // El resto de los métodos como setBPM, setTrackVolume, etc., no necesitan cambios...
-    setTrackVolume(trackId, volumeInDb) {
-        if (this.tracks[trackId]) this.tracks[trackId].channel.volume.value = volumeInDb;
+    setBPM(bpm) {
+        if (this.transport) this.transport.bpm.value = bpm;
     }
-    setTrackPan(trackId, panValue) {
-        if (this.tracks[trackId]) this.tracks[trackId].channel.pan.value = panValue;
-    }
+
     toggleMute(trackId) {
         if (this.tracks[trackId]) {
             const track = this.tracks[trackId];
             track.channel.mute = !track.channel.mute;
-            if (this.onStateChange) this.onStateChange(this.state, this.activeTrackId);
+            if (this.onStateChange) this.onStateChange(this.state, null);
         }
     }
-    setTrackQuantizeMode(trackId, mode) {
-        if (this.tracks[trackId]) this.tracks[trackId].quantize = mode;
+
+    setTrackVolume(trackId, volumeInDb) {
+        if (this.tracks[trackId]) {
+            this.tracks[trackId].channel.volume.value = volumeInDb;
+        }
+    }
+
+    setTrackPan(trackId, panValue) {
+        if (this.tracks[trackId]) {
+            this.tracks[trackId].channel.pan.value = panValue;
+        }
     }
 }
