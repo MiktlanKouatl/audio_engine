@@ -1,5 +1,6 @@
 // AudioEngine.js
 // Usamos la importación selectiva para mantener el código limpio.
+import { Track } from '../modules/Track.js';
 import { getTransport, start as startTone} from 'tone';
 
 export class AudioEngine {
@@ -51,6 +52,36 @@ export class AudioEngine {
      */
     addTrack(track) {
         this.tracks.push(track);
+    }
+
+    /**
+     * Crea una nueva pista, la añade al motor y la devuelve.
+     * @param {RecorderModule} recorderModule La referencia al módulo de grabación.
+     * @returns {Track} La instancia de la nueva pista creada.
+     */
+    createNewTrack(recorderModule) {
+        const newTrackId = this.tracks.length + 1;
+        const newTrack = new Track(`Pista ${newTrackId}`, recorderModule);
+        this.addTrack(newTrack);
+        console.log(`Pista ${newTrackId} creada dinámicamente.`);
+        return newTrack;
+    }
+
+    /**
+     * Elimina una pista del motor de forma segura, asegurando la limpieza de memoria.
+     * @param {Track} trackToDelete La instancia de la pista que se va a eliminar.
+     */
+    deleteTrack(trackToDelete) {
+        const trackIndex = this.tracks.indexOf(trackToDelete);
+        
+        if (trackIndex > -1) {
+            // 1. Lo más importante: le decimos a la pista que libere sus recursos.
+            trackToDelete.dispose();
+            
+            // 2. Después, la eliminamos de la lista de pistas activas.
+            this.tracks.splice(trackIndex, 1);
+            console.log(`Pista "${trackToDelete.name}" eliminada del motor.`);
+        }
     }
 
     /**

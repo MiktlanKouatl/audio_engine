@@ -19,6 +19,7 @@ function init() {
     const beatVisualizerContainer = document.getElementById('beat-visualizer');
     const enableMicButton = document.getElementById('enable-mic-button');
     const tracksContainer = document.getElementById('tracks-container');
+    const recordNewTrackButton = document.getElementById('record-new-track-button');
 
 
     //  Creamos una instancia de nuestro motor de audio.
@@ -27,41 +28,72 @@ function init() {
     const loopVisualizer = new LoopVisualizer(audioEngine, loopVisualizerContainer);
     const beatVisualizer = new BeatVisualizer(audioEngine, beatVisualizerContainer);
 
-    const trackCount = 2; // Vamos a crear 2 pistas vacías para grabar
+    /* const trackCount = 2; // Vamos a crear 2 pistas vacías para grabar
     for (let i = 0; i < trackCount; i++) {
         // ¡Inyectamos el recorderModule en cada pista!
         const track = new Track(`Pista ${i + 1}`, recorderModule);
         audioEngine.addTrack(track);
-    }
+    } */
 
     // --- Lógica de UI ---
     function renderTracks() {
         tracksContainer.innerHTML = '';
-        audioEngine.tracks.forEach((track) => {
-            const button = document.createElement('button');
-            button.className = 'track-button';
-            button.textContent = track.name;
-            button.classList.add(track.state); // ej. 'empty', 'has_loop'
+        audioEngine.tracks.forEach(track => {
+            const trackElement = document.createElement('div');
+            trackElement.className = 'track-ui-container';
 
-            button.addEventListener('click', async () => {
-                // Si el transporte no está sonando, no podemos grabar.
-                if (audioEngine.getTransportState().state !== 'started') {
-                    alert("¡Presiona 'Play' primero para establecer el ritmo!");
-                    return;
-                }
-                // Primero, actualizamos la UI al estado 'armed' para dar feedback inmediato.
-                button.classList.remove('empty');
-                button.classList.add('armed');
-                
-                // Luego, esperamos a que todo el proceso de grabación termine.
-                await track.armRecord(); 
-                
-                // Y SOLO ENTONCES, volvemos a dibujar todo para reflejar el estado final.
-                renderTracks(); 
-            });
-            tracksContainer.appendChild(button);
+            const mainButton = document.createElement('button');
+            mainButton.className = 'track-button';
+            mainButton.textContent = track.name;
+            mainButton.classList.add(track.state);
+            trackElement.appendChild(mainButton);
+
+            // ¡NUEVO! Si la pista tiene un loop, añadimos el botón de borrar.
+            if (track.state === 'has_loop') {
+                const deleteButton = document.createElement('button');
+                deleteButton.className = 'delete-button';
+                deleteButton.textContent = '✖';
+
+                deleteButton.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Evita que el clic se propague al botón de la pista
+
+                    // Pedimos confirmación para evitar borrados accidentales
+                    if (confirm(`¿Seguro que quieres borrar "${track.name}"?`)) {
+                        audioEngine.deleteTrack(track);
+                        renderTracks(); // Volvemos a dibujar para que la pista desaparezca
+                    }
+                });
+                trackElement.appendChild(deleteButton);
+            }
+            tracksContainer.appendChild(trackElement);
         });
     }
+    
+
+    // Listener para el botón de Grabar Nuevo Loop
+    recordNewTrackButton.addEventListener('click', async () => {
+        if (audioEngine.getTransportState().state !== 'started') {
+            alert("¡Presiona 'Play' primero para establecer el ritmo!");
+            return;
+        }
+        if (recorderModule.state !== 'idle') {
+            alert("La grabadora ya está en uso.");
+            return;
+        }
+
+        // 1. Creamos la nueva pista a través del motor
+        const newTrack = audioEngine.createNewTrack(recorderModule);
+        
+        // 2. Redibujamos la UI para que aparezca el botón de la nueva pista
+        renderTracks();
+
+        // 3. Invocamos la grabación en la nueva pista
+        //    'await' asegura que la UI se actualice después de que todo termine.
+        await newTrack.armRecord();
+
+        // 4. Volvemos a dibujar para reflejar el estado final ('has_loop')
+        renderTracks();
+    });
 
     // --- Lógica del input de Loop Length ---
     loopLengthInput.addEventListener('input', (event) => {

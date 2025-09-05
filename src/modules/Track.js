@@ -47,4 +47,16 @@ export class Track {
             this.state = 'empty'; // Revertimos al estado inicial si hay un error.
         }
     }
+    /**
+     * Limpia y libera todos los recursos de audio utilizados por esta pista.
+     * Esencial para evitar fugas de memoria.
+     */
+    dispose() {
+        if (this.player) {
+            this.player.dispose();
+            console.log(`Player de la pista "${this.name}" liberado.`);
+        }
+        // Si en el futuro añadimos efectos, también los liberaríamos aquí.
+        // ej: this.reverb.dispose();
+    }
 }
