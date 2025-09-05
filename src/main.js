@@ -2,6 +2,7 @@
 import { AudioEngine } from './engines/AudioEngine.js';
 import { Track } from './modules/Track.js';
 import { LoopVisualizer } from './modules/LoopVisualizer.js';
+import { BeatVisualizer } from './modules/BeatVisualizer.js';
 import { RecorderModule } from './modules/RecorderModule.js';
 
 // Envolvemos toda la lógica en una función 'init' para asegurar
@@ -15,6 +16,7 @@ function init() {
     const statusDisplay = document.getElementById('status-display');
     const loopLengthInput = document.getElementById('loop-length-input');
     const loopVisualizerContainer = document.getElementById('loop-visualizer');
+    const beatVisualizerContainer = document.getElementById('beat-visualizer');
     const enableMicButton = document.getElementById('enable-mic-button');
     const tracksContainer = document.getElementById('tracks-container');
 
@@ -23,6 +25,7 @@ function init() {
     const audioEngine = new AudioEngine();
     const recorderModule = new RecorderModule(audioEngine.transport);
     const loopVisualizer = new LoopVisualizer(audioEngine, loopVisualizerContainer);
+    const beatVisualizer = new BeatVisualizer(audioEngine, beatVisualizerContainer);
 
     const trackCount = 2; // Vamos a crear 2 pistas vacías para grabar
     for (let i = 0; i < trackCount; i++) {
@@ -59,23 +62,6 @@ function init() {
             tracksContainer.appendChild(button);
         });
     }
-
-    // --- ¡AQUÍ ESTÁ LA MAGIA! ---
-    //  Definimos los patrones musicales fuera de las clases.
-    //    Esto es un buen ejemplo de separación de datos y lógica.
-    /* 
-    const melodyPattern = ["C4", "E4", "G4", "B4", "C5", null, "G4", null];
-    const bassPattern = ["C2", null, "G2", null, "A2", null, "G2", null];
-
-    //  Creamos dos instancias de Track, cada una con su propio patrón.
-    const melodyTrack = new Track("Melodía", melodyPattern);
-    const bassTrack = new Track("Bajo", bassPattern);
-
-    //  Añadimos ambas pistas al motor.
-    audioEngine.addTrack(melodyTrack);
-    audioEngine.addTrack(bassTrack);
-    */
-    // ----------------------------
 
     // --- Lógica del input de Loop Length ---
     loopLengthInput.addEventListener('input', (event) => {

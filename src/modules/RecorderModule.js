@@ -36,34 +36,66 @@ export class RecorderModule {
      */
     startScheduledRecording() {
         return new Promise((resolve, reject) => {
-            if (this.state !== 'idle') {
-                return reject(new Error(`La grabadora está ocupada. Estado actual: ${this.state}`));
+            if (this.state !== 'idle' || !this.transport) {
+                return reject(new Error(`La grabadora no está lista.`));
             }
             if (this.mic.state !== 'started') {
                 return reject(new Error("El micrófono no está listo."));
             }
 
             this.state = 'armed';
-            const loopLength = this.transport.loopEnd;
-            console.log(`Grabación armada. Empezará en el próximo ciclo y durará ${loopLength}.`);
+            const loopDuration = Time(this.transport.loopEnd).toSeconds();
+            console.log(`Grabación armada. Empezará en el próximo ciclo y durará ${loopDuration.toFixed(2)} segundos.`);
 
-            // Agenda el INICIO de la grabación para que coincida con el inicio del próximo loop.
-            this.transport.scheduleOnce(time => {
+            // 1. Agendamos el INICIO de la grabación, esto sigue siendo preciso y fiable.
+            this.transport.scheduleOnce(startTime => {
                 this.state = 'recording';
                 this.recorder.start();
-                console.log(`🔴 Grabación iniciada en t=${time.toFixed(2)}`);
-            }, "0"); // "0" en un transporte con loop significa el inicio del próximo ciclo.
+                console.log(`🔴 Grabación iniciada en t=${startTime.toFixed(2)}`);
 
-            // Agenda el FIN de la grabación justo cuando el loop termina.
-            this.transport.scheduleOnce(async (time) => {
-                const blob = await this.recorder.stop();
-                const url = URL.createObjectURL(blob);
+                // 2. ¡EL NUEVO ENFOQUE! Iniciamos nuestro observador manual.
+                let previousBar = -1; // Empezamos con un valor imposible.
+                let animationFrameId = null;
+
+                const watchForLoopEnd = async () => {
+                    const [currentBar] = this.transport.position.split(':').map(parseFloat);
+
+                    // La primera vez, solo guardamos la posición inicial.
+                    if (previousBar === -1) {
+                        previousBar = currentBar;
+                    }
+
+                    // La condición de parada: si el compás actual es MENOR que el anterior,
+                    // significa que el transporte ha loopeado.
+                    if (currentBar < previousBar) {
+                        // ¡Hemos detectado el final del loop!
+                        cancelAnimationFrame(animationFrameId); // Detenemos el observador.
+
+                        try {
+                            if (this.state !== 'recording') return;
+
+                            const blob = await this.recorder.stop();
+                            const url = URL.createObjectURL(blob);
+                            
+                            this.state = 'idle';
+                            console.log(`⏹️ Grabación finalizada por OBSERVADOR en t=${this.transport.seconds.toFixed(2)}. URL generada.`);
+                            resolve(url);
+                        } catch (e) {
+                            console.error("Error al detener y procesar la grabación:", e);
+                            this.state = 'idle';
+                            reject(e);
+                        }
+                    } else {
+                        // Si no hemos llegado al final, seguimos observando.
+                        previousBar = currentBar;
+                        animationFrameId = requestAnimationFrame(watchForLoopEnd);
+                    }
+                };
                 
-                this.state = 'idle';
-                console.log(`⏹️ Grabación finalizada en t=${time.toFixed(2)}. URL generada.`);
-                resolve(url); // La promesa se resuelve con la URL del audio.
-            }, loopLength);
+                // Arrancamos el observador.
+                watchForLoopEnd();
 
+            }, "0");
         });
     }
     
