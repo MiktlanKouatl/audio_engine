@@ -4,6 +4,7 @@ import { Track } from './modules/Track.js';
 import { LoopVisualizer } from './modules/LoopVisualizer.js';
 import { BeatVisualizer } from './modules/BeatVisualizer.js';
 import { RecorderModule } from './modules/RecorderModule.js';
+import { sessionManager } from './managers/SessionManager.js';
 
 // Envolvemos toda la lógica en una función 'init' para asegurar
 // que el DOM esté completamente cargado antes de ejecutar el código.
@@ -20,11 +21,15 @@ function init() {
     const enableMicButton = document.getElementById('enable-mic-button');
     const tracksContainer = document.getElementById('tracks-container');
     const recordNewTrackButton = document.getElementById('record-new-track-button');
+    const saveSessionButton = document.getElementById('save-session-button');
+    const loadMenuContainer = document.getElementById('load-menu-container');
+
 
 
     //  Creamos una instancia de nuestro motor de audio.
     const audioEngine = new AudioEngine();
     const recorderModule = new RecorderModule(audioEngine.transport);
+    audioEngine.recorderModule = recorderModule;
     const loopVisualizer = new LoopVisualizer(audioEngine, loopVisualizerContainer);
     const beatVisualizer = new BeatVisualizer(audioEngine, beatVisualizerContainer);
 
@@ -48,21 +53,58 @@ function init() {
             mainButton.classList.add(track.state);
             trackElement.appendChild(mainButton);
 
-            // ¡NUEVO! Si la pista tiene un loop, añadimos el botón de borrar.
+            // Si la pista tiene un loop, añadimos controles y botón de borrar
             if (track.state === 'has_loop') {
+                // Botón Mute (modifica el botón principal)
+                mainButton.textContent = track.channel.mute ? `${track.name} (Muted)` : track.name;
+                mainButton.style.opacity = track.channel.mute ? 0.5 : 1;
+                mainButton.onclick = () => {
+                    track.toggleMute();
+                    renderTracks(); // Redibujar para actualizar el texto
+                };
+
+                // Contenedor para los controles de mezcla
+                const mixerControls = document.createElement('div');
+                mixerControls.className = 'mixer-controls';
+
+                // Control de Volumen
+                const volGroup = document.createElement('div');
+                volGroup.className = 'slider-group';
+                volGroup.innerHTML = `<label>Vol</label><input type="range" min="-48" max="6" value="${track.channel.volume.value}" step="1">`;
+                volGroup.querySelector('input').addEventListener('input', e => track.setVolume(parseFloat(e.target.value)));
+                mixerControls.appendChild(volGroup);
+
+                // Control de Paneo
+                const panGroup = document.createElement('div');
+                panGroup.className = 'slider-group';
+                panGroup.innerHTML = `<label>Pan</label><input type="range" min="-1" max="1" value="${track.channel.pan.value}" step="0.01">`;
+                panGroup.querySelector('input').addEventListener('input', e => track.setPan(parseFloat(e.target.value)));
+                mixerControls.appendChild(panGroup);
+
+                trackElement.appendChild(mixerControls);
+
+                // Control de Tono (Pitch)
+                const pitchGroup = document.createElement('div');
+                pitchGroup.className = 'slider-group';
+                // El valor 'pitch' en el PitchShift es en semitonos.
+                pitchGroup.innerHTML = `<label>Tono</label><input type="range" min="-12" max="12" value="${track.pitchShift.pitch}" step="1">`;
+                pitchGroup.querySelector('input').addEventListener('input', e => track.setPitch(parseFloat(e.target.value)));
+                mixerControls.appendChild(pitchGroup);
+
+                trackElement.appendChild(mixerControls);
+
+
+                // Botón de Borrar
                 const deleteButton = document.createElement('button');
                 deleteButton.className = 'delete-button';
                 deleteButton.textContent = '✖';
-
-                deleteButton.addEventListener('click', (e) => {
-                    e.stopPropagation(); // Evita que el clic se propague al botón de la pista
-
-                    // Pedimos confirmación para evitar borrados accidentales
+                deleteButton.onclick = (e) => {
+                    e.stopPropagation();
                     if (confirm(`¿Seguro que quieres borrar "${track.name}"?`)) {
                         audioEngine.deleteTrack(track);
-                        renderTracks(); // Volvemos a dibujar para que la pista desaparezca
+                        renderTracks();
                     }
-                });
+                };
                 trackElement.appendChild(deleteButton);
             }
             tracksContainer.appendChild(trackElement);
@@ -129,6 +171,7 @@ function init() {
             startButton.style.display = 'none'; // Ocultamos el botón de inicio
             playStopButton.style.display = 'inline-block'; // ¡Mostramos el de Play/Stop!
             enableMicButton.style.display = 'inline-block'; // Mostramos el botón de micrófono
+            saveSessionButton.style.display = 'inline-block'; // Mostramos el botón de guardar
 
             //startButton.textContent = "Motor Iniciado";
             //startButton.disabled = true; // Deshabilitamos el botón una vez usado.
@@ -161,6 +204,55 @@ function init() {
             statusDisplay.textContent = 'Detenido.';
         }
     });
+    // Listener para el botón de Guardar
+    saveSessionButton.addEventListener('click', async () => {
+        const sessionName = prompt("Elige un nombre para tu sesión:", `Sesión ${new Date().toLocaleTimeString()}`);
+        if (!sessionName) return; // El usuario canceló
+
+        try {
+            const sessionData = audioEngine.serialize();
+            await sessionManager.saveSession(sessionName, sessionData);
+        } catch (error) {
+            console.error("Error al guardar la sesión:", error);
+            alert("No se pudo guardar la sesión.");
+        }
+    });
+    // --- Lógica de Carga al Iniciar ---
+    async function populateLoadMenu() {
+        try {
+            const sessions = await sessionManager.getSavedSessions();
+            if (sessions.length > 0) {
+                loadMenuContainer.innerHTML = '<h3>Cargar Sesión:</h3>';
+                const select = document.createElement('select');
+                select.innerHTML = `<option>-- Elige una sesión --</option>`;
+                sessions.forEach(session => {
+                    select.innerHTML += `<option value="${session.name}">${session.name}</option>`;
+                });
+
+                select.addEventListener('change', async (event) => {
+                    const sessionName = event.target.value;
+                    if (!sessionName || sessionName.startsWith('--')) return;
+
+                    try {
+                        const sessionData = await sessionManager.loadSession(sessionName);
+                        await audioEngine.loadSessionData(sessionData);
+                        document.getElementById('loop-length-input').value = audioEngine.loopLengthInMeasures;
+                        renderTracks(); // ¡Fundamental para mostrar la sesión cargada!
+                        alert(`¡Sesión "${sessionName}" cargada!`);
+                    } catch (e) {
+                        alert("Error al cargar la sesión.");
+                        console.error(e);
+                    }
+                });
+                loadMenuContainer.appendChild(select);
+            }
+        } catch (e) {
+            console.warn("No se pudo cargar la lista de sesiones guardadas.", e);
+        }
+    }
+    
+    // Llamamos a la función para poblar el menú cuando la app inicia
+    populateLoadMenu();
 }
 
 // Nos aseguramos de llamar a init() solo cuando la página se haya cargado por completo.

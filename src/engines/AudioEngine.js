@@ -114,4 +114,27 @@ export class AudioEngine {
         };
     }
 
+    // Método para serializar la sesión completa.
+    serialize() {
+        return {
+            bpm: this.transport.bpm.value,
+            loopLength: this.loopLengthInMeasures,
+            // Filtramos las pistas que no tengan datos y las serializamos
+            tracks: this.tracks.map(track => track.serialize()).filter(t => t !== null)
+        };
+    }
+    // Método para cargar una sesión completa en el motor.
+    async loadSessionData(sessionData) {
+        this.transport.bpm.value = sessionData.bpm;
+        this.setLoopLength(sessionData.loopLength);
+        
+        // Limpiamos las pistas existentes
+        this.tracks.forEach(t => t.dispose());
+        this.tracks = [];
+        
+        for (const trackData of sessionData.tracks) {
+            const newTrack = this.createNewTrack(this.recorderModule); // Asumiendo que recorderModule está disponible
+            await newTrack.loadData(trackData);
+        }
+    }
 }
