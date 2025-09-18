@@ -23,6 +23,7 @@ function init() {
     const recordNewTrackButton = document.getElementById('record-new-track-button');
     const saveSessionButton = document.getElementById('save-session-button');
     const loadMenuContainer = document.getElementById('load-menu-container');
+    const metronomeToggle = document.getElementById('metronome-toggle');
 
 
 
@@ -216,6 +217,9 @@ function init() {
             console.error("Error al guardar la sesión:", error);
             alert("No se pudo guardar la sesión.");
         }
+    });
+    metronomeToggle.addEventListener('change', (event) => {
+        audioEngine.toggleMetronome(event.target.checked);
     });
     // --- Lógica de Carga al Iniciar ---
     async function populateLoadMenu() {

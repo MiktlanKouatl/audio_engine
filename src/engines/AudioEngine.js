@@ -1,7 +1,7 @@
 // AudioEngine.js
 // Usamos la importación selectiva para mantener el código limpio.
 import { Track } from '../modules/Track.js';
-import { getTransport, start as startTone} from 'tone';
+import { getTransport, start as startTone, Synth, Loop} from 'tone';
 
 export class AudioEngine {
     constructor() {
@@ -11,6 +11,9 @@ export class AudioEngine {
         this.tracks = [];
         //Definimos la longitud de nuestro loop maestro ---
         this.loopLengthInMeasures = 4; // Un loop de 4 compases
+        // ¡NUEVO! Componentes del metrónomo
+        this.metronomeSynth = null;
+        this.metronomeLoop = null;
     }
 
     /**
@@ -24,6 +27,9 @@ export class AudioEngine {
         }
         // startTone es la función que importamos de 'tone'
         await startTone();
+        // Creamos el sinte del metrónomo aquí
+        this.metronomeSynth = new Synth().toDestination();
+
         this.isReady = true;
         this.transport.bpm.value = 120;
         //Configuramos el transporte para que funcione en un ciclo
@@ -31,7 +37,29 @@ export class AudioEngine {
         this.transport.loopStart = 0;
         this.transport.loopEnd = `${this.loopLengthInMeasures}m`; // Loop de 4 compases
 
+         // Creamos el loop del metrónomo
+        this.metronomeLoop = new Loop(time => {
+            // Un pulso simple en cada tiempo (negra)
+            this.metronomeSynth.triggerAttackRelease("C2", "16n", time);
+        }, "4n").start(0);
+        
+        // Por defecto, el metrónomo está apagado (volumen a -infinito)
+        this.metronomeSynth.volume.value = -Infinity;
+
         console.log("AudioEngine listo. El AudioContext está activo.");
+    }
+    /**
+     * 
+     * @param {*} isOn 
+     */
+    toggleMetronome(isOn) {
+        if (this.metronomeSynth) {
+            if (isOn) {
+                this.metronomeSynth.volume.value = -12; // Un volumen audible pero no molesto
+            } else {
+                this.metronomeSynth.volume.value = -Infinity;
+            }
+        }
     }
 
     /**

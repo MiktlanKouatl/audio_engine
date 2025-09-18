@@ -1,4 +1,4 @@
-import { Synth, Player, Channel, PitchShift } from 'tone';
+import { Synth, Player, Channel, PitchShift, Time } from 'tone';
 
 export class Track {
     /**
@@ -41,15 +41,28 @@ export class Track {
             // Le pedimos al grabador que inicie una grabación agendada.
             // 'await' pausa la ejecución aquí hasta que la grabación termine.
             const audioUrl = await this.recorderModule.startScheduledRecording();
+            console.log(`[DEBUG] Track "${this.name}" recibió la URL del audio.`);
             const response = await fetch(audioUrl); // Obtenemos el Blob desde la URL
             this.audioBlob = await response.blob(); // Guardamos el Blob original
             
             // Una vez que la grabación termina, cargamos el resultado.
             await this.player.load(audioUrl);
+
+            const expectedDuration = Time(this.recorderModule.transport.loopEnd).toSeconds();
+            const actualDuration = this.player.buffer.duration;
+            const latencyCompensation = expectedDuration - actualDuration;
+
+
+            console.log(`[TRACK] Duración esperada: ${expectedDuration.toFixed(2)}s, Duración real: ${actualDuration.toFixed(2)}s`);
+            console.log(`[TRACK] Compensación de latencia calculada: ${latencyCompensation.toFixed(3)}s`);
+
             
-            // Sincronizamos el inicio del player con el transporte para que siempre
-            // comience en el inicio del ciclo maestro.
-            this.player.sync().start(0);
+            // ¡LA SOLUCIÓN! Le pasamos el offset al método start.
+            // El primer '0' es CUÁNDO empezar (al inicio del loop del transporte).
+            // El segundo valor es DESDE DÓNDE empezar a leer el archivo de audio.
+            this.player.sync().start(0, latencyCompensation);
+            console.log(`[TRACK] Player de "${this.name}" sincronizado con compensación.`);
+
 
             this.state = 'has_loop';
             console.log(`✅ Loop grabado y listo en la pista "${this.name}".`);

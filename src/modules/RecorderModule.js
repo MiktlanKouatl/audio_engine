@@ -45,13 +45,18 @@ export class RecorderModule {
 
             this.state = 'armed';
             const loopDuration = Time(this.transport.loopEnd).toSeconds();
-            console.log(`Grabación armada. Empezará en el próximo ciclo y durará ${loopDuration.toFixed(2)} segundos.`);
+            const loopSeconds = Time(loopDuration).toSeconds();
+            //console.log(`Grabación armada. Empezará en el próximo ciclo y durará ${loopDuration.toFixed(2)} segundos.`);
+            console.log(`[RECORDER] Armado. Duración: ${loopSeconds.toFixed(2)}s. Transporte en: ${this.transport.position}`);
+
 
             // 1. Agendamos el INICIO de la grabación, esto sigue siendo preciso y fiable.
             this.transport.scheduleOnce(startTime => {
                 this.state = 'recording';
                 this.recorder.start();
-                console.log(`🔴 Grabación iniciada en t=${startTime.toFixed(2)}`);
+                //console.log(`🔴 Grabación iniciada en t=${startTime.toFixed(2)}`);
+                console.log(`🔴 GRABACIÓN INICIADA en t=${startTime.toFixed(2)}s (Transporte en: ${this.transport.position})`);
+
 
                 // 2. ¡EL NUEVO ENFOQUE! Iniciamos nuestro observador manual.
                 let previousBar = -1; // Empezamos con un valor imposible.
@@ -75,10 +80,13 @@ export class RecorderModule {
                             if (this.state !== 'recording') return;
 
                             const blob = await this.recorder.stop();
+                            console.log(`[DEBUG] Blob de audio creado. Duración estimada: ${blob.size / 44100 / 2}s`); // Estimación simple
+
                             const url = URL.createObjectURL(blob);
                             
                             this.state = 'idle';
                             console.log(`⏹️ Grabación finalizada por OBSERVADOR en t=${this.transport.seconds.toFixed(2)}. URL generada.`);
+
                             resolve(url);
                         } catch (e) {
                             console.error("Error al detener y procesar la grabación:", e);

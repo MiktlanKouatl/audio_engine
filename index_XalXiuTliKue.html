@@ -2,8 +2,8 @@
 <html>
 <head>
     <title>Secuenciador con Mezclador</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
-    <style>
+<!--     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+ -->    <style>
         body { font-family: monospace; background-color: #1e1e1e; color: #d4d4d4; padding: 20px; }
         .main-controls button { background-color: #0e639c; color: white; border: none; padding: 10px 20px; font-size: 16px; cursor: pointer; margin-bottom: 20px; }
         .main-controls button:hover { background-color: #1177bb; }
@@ -25,7 +25,8 @@
     
     <div id="channel-controls"></div>
 
-    <script>
+    <script type="module">
+        import * as Tone from 'tone';
     //======================================================================
     // --- ÁREA DE TRABAJO DEL USUARIO ---
     //======================================================================

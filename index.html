@@ -154,11 +154,11 @@
         .slider-group input[type="range"] {
             width: 100px;
         }
+        .metronome-control { display: flex; align-items: center; gap: 5px; }
     </style>
 </head>
 <body>
-    <h1>Fase 0: El Núcleo</h1>
-    <p>Estableciendo el Transporte y la Arquitectura Base</p>
+    <h1>Loop Station</h1>
     <div id="load-menu-container"></div>
     <div id="loop-visualizer"></div>
     <div id="beat-visualizer"></div>
@@ -166,6 +166,10 @@
     <div class="controls">
         <label for="loop-length-input">Loop (compases):</label>
         <input type="number" id="loop-length-input" value="4" min="1" max="32" step="1">
+        <div class="metronome-control">
+            <input type="checkbox" id="metronome-toggle">
+            <label for="metronome-toggle">Click</label>
+        </div>
         <button id="record-new-track-button" class="track-button">🎙️ Grabar Loop</button>
     </div>
     <div>
