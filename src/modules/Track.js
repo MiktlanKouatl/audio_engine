@@ -1,27 +1,28 @@
-import { Synth, Player, Channel, PitchShift, Time } from 'tone';
+import { Synth, Player, Channel, PitchShift, Filter, Time } from 'tone';
 
 export class Track {
     /**
      * @param {string} name El nombre de la pista.
      * @param {RecorderModule} recorderModule Una referencia al módulo de grabación global.
      */
-    constructor(name, recorderModule){
+    constructor(name, recorderModule, masterOut){
         this.name = name;
         this.recorderModule = recorderModule; // Referencia al grabador
         this.state = 'empty'; // empty | armed | recording | has_loop
 
         this.pitchShift = new PitchShift(0);// Efecto de cambio de tono, inicializado a 0 semitonos
+        this.filter = new Filter(20000, 'lowpass'); // Un filtro pasa-bajas, abierto por defecto (20000Hz)
 
         this.channel = new Channel({   
                 volume: -6,
                 pan: 0,
                 mute: false
-        }).toDestination(); // Canal para controlar el volumen y panning de la pista
+        }).connect(masterOut); // Canal para controlar el volumen y panning de la pista
 
         // Cada pista ahora tiene un Player para el audio grabado.
         // Creamos el Player y construimos la cadena de señal.
         // .chain() es una forma elegante de conectar varios nodos en orden.
-        this.player = new Player().chain(this.pitchShift, this.channel);
+        this.player = new Player().chain(this.pitchShift, this.filter, this.channel);
         this.player.loop = true; // Los loops de audio se repiten por defecto.
     }
     /**
@@ -110,6 +111,12 @@ export class Track {
             this.pitchShift.pitch = semitones;
         }
     }
+    // Método para controlar la frecuencia del filtro.
+    setFilterFrequency(freq) {
+        if (this.filter) {
+            this.filter.frequency.value = freq;
+        }
+    }
     toggleMute() {
         if (this.channel) {
             this.channel.mute = !this.channel.mute;
@@ -134,6 +141,10 @@ export class Track {
             this.pitchShift.dispose();
             console.log(`PitchShift de la pista "${this.name}" liberado.`);
         }
+        if (this.filter) {
+            this.filter.dispose();
+        }
+
         // Si en el futuro añadimos efectos, también los liberaríamos aquí.
         // ej: this.reverb.dispose();
     }

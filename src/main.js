@@ -25,6 +25,12 @@ function init() {
     const loadMenuContainer = document.getElementById('load-menu-container');
     const metronomeToggle = document.getElementById('metronome-toggle');
 
+    const toggleBounceModeButton = document.getElementById('toggle-bounce-mode-button');
+    const confirmBounceButton = document.getElementById('confirm-bounce-button');
+
+    const masterVolumeSlider = document.getElementById('master-volume-slider');
+    const metronomeVolumeSlider = document.getElementById('metronome-volume-slider');
+
 
 
     //  Creamos una instancia de nuestro motor de audio.
@@ -42,17 +48,34 @@ function init() {
     } */
 
     // --- Lógica de UI ---
+
+    let isBounceMode = false; // Una variable para saber si estamos en modo de unión
+
+
+
     function renderTracks() {
         tracksContainer.innerHTML = '';
         audioEngine.tracks.forEach(track => {
             const trackElement = document.createElement('div');
             trackElement.className = 'track-ui-container';
 
+
+            if (isBounceMode && track.state === 'has_loop') {
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'bounce-checkbox';
+                checkbox.dataset.trackName = track.name; // Guardamos el nombre para identificarla
+                trackElement.appendChild(checkbox);
+            }
+            
+            
+            const trackControls = document.createElement('div');
+
             const mainButton = document.createElement('button');
             mainButton.className = 'track-button';
             mainButton.textContent = track.name;
             mainButton.classList.add(track.state);
-            trackElement.appendChild(mainButton);
+            trackControls.appendChild(mainButton);
 
             // Si la pista tiene un loop, añadimos controles y botón de borrar
             if (track.state === 'has_loop') {
@@ -73,7 +96,7 @@ function init() {
                 volGroup.className = 'slider-group';
                 volGroup.innerHTML = `<label>Vol</label><input type="range" min="-48" max="6" value="${track.channel.volume.value}" step="1">`;
                 volGroup.querySelector('input').addEventListener('input', e => track.setVolume(parseFloat(e.target.value)));
-                mixerControls.appendChild(volGroup);
+                trackControls.appendChild(volGroup);
 
                 // Control de Paneo
                 const panGroup = document.createElement('div');
@@ -82,7 +105,7 @@ function init() {
                 panGroup.querySelector('input').addEventListener('input', e => track.setPan(parseFloat(e.target.value)));
                 mixerControls.appendChild(panGroup);
 
-                trackElement.appendChild(mixerControls);
+                trackControls.appendChild(mixerControls);
 
                 // Control de Tono (Pitch)
                 const pitchGroup = document.createElement('div');
@@ -91,9 +114,17 @@ function init() {
                 pitchGroup.innerHTML = `<label>Tono</label><input type="range" min="-12" max="12" value="${track.pitchShift.pitch}" step="1">`;
                 pitchGroup.querySelector('input').addEventListener('input', e => track.setPitch(parseFloat(e.target.value)));
                 mixerControls.appendChild(pitchGroup);
+                // Control del Filtro
+                const filterGroup = document.createElement('div');
+                filterGroup.className = 'slider-group';
+                // La frecuencia es logarítmica, pero un rango lineal funciona bien para empezar.
+                filterGroup.innerHTML = `<label>Filtro</label><input type="range" min="100" max="10000" value="${track.filter.frequency.value}" step="10">`;
+                filterGroup.querySelector('input').addEventListener('input', e => track.setFilterFrequency(parseFloat(e.target.value)));
+                mixerControls.appendChild(filterGroup);
 
-                trackElement.appendChild(mixerControls);
+                trackControls.appendChild(mixerControls);
 
+                
 
                 // Botón de Borrar
                 const deleteButton = document.createElement('button');
@@ -106,7 +137,8 @@ function init() {
                         renderTracks();
                     }
                 };
-                trackElement.appendChild(deleteButton);
+                trackControls.appendChild(deleteButton);
+                trackElement.appendChild(trackControls);
             }
             tracksContainer.appendChild(trackElement);
         });
@@ -138,6 +170,51 @@ function init() {
         renderTracks();
     });
 
+    // --- Lógica del Modo Bounce (Unir Pistas) ---
+    
+    toggleBounceModeButton.addEventListener('click', () => {
+        isBounceMode = !isBounceMode; // Invertimos el estado
+
+        if (isBounceMode) {
+            toggleBounceModeButton.textContent = 'Cancelar';
+            confirmBounceButton.style.display = 'inline-block';
+        } else {
+            toggleBounceModeButton.textContent = '🔗 Unir Pistas';
+            confirmBounceButton.style.display = 'none';
+        }
+
+        renderTracks(); // Volvemos a dibujar para mostrar/ocultar los checkboxes
+    });
+
+    confirmBounceButton.addEventListener('click', async () => {
+        // 1. Encontrar los checkboxes que fueron marcados.
+        const selectedCheckboxes = document.querySelectorAll('.bounce-checkbox:checked');
+        if (selectedCheckboxes.length < 2) {
+            alert("Por favor, selecciona al menos dos pistas para unir.");
+            return;
+        }
+
+        // 2. Obtener las instancias de las pistas correspondientes a esos checkboxes.
+        const selectedTrackNames = Array.from(selectedCheckboxes).map(cb => cb.dataset.trackName);
+        const tracksToBounce = audioEngine.tracks.filter(track => selectedTrackNames.includes(track.name));
+
+        // 3. Desactivar la UI mientras se procesa.
+        confirmBounceButton.disabled = true;
+        confirmBounceButton.textContent = 'Procesando...';
+
+        // 4. Llamar al método principal del motor y esperar a que termine.
+        await audioEngine.bounceTracks(tracksToBounce);
+
+        // 5. Salir del modo de unión y actualizar la UI.
+        isBounceMode = false;
+        toggleBounceModeButton.textContent = '🔗 Unir Pistas';
+        confirmBounceButton.style.display = 'none';
+        confirmBounceButton.disabled = false;
+        confirmBounceButton.textContent = 'Confirmar Unión';
+        
+        renderTracks(); // Dibujar la nueva estructura de pistas.
+    });
+
     // --- Lógica del input de Loop Length ---
     loopLengthInput.addEventListener('input', (event) => {
         const measures = parseInt(event.target.value, 10);
@@ -157,6 +234,25 @@ function init() {
         // Validamos que sea un número válido y positivo
         if (!isNaN(measures) && measures > 0) {
             audioEngine.setLoopLength(measures);
+        }
+    });
+
+
+    // Listener para el control del volumen maestro
+    masterVolumeSlider.addEventListener('input', (event) => {
+        audioEngine.setMasterVolume(parseFloat(event.target.value));
+    });
+    metronomeVolumeSlider.addEventListener('input', (event) => {
+        audioEngine.setMetronomeVolume(parseFloat(event.target.value));
+    });
+    metronomeToggle.addEventListener('change', (event) => {
+        // Hacemos que el toggle y el slider estén sincronizados
+        if (event.target.checked) {
+            metronomeVolumeSlider.value = -12;
+            audioEngine.setMetronomeVolume(-12);
+        } else {
+            metronomeVolumeSlider.value = -48; // O un valor muy bajo
+            audioEngine.setMetronomeVolume(-Infinity);
         }
     });
 

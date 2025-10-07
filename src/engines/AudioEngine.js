@@ -1,7 +1,7 @@
 // AudioEngine.js
 // Usamos la importación selectiva para mantener el código limpio.
 import { Track } from '../modules/Track.js';
-import { getTransport, start as startTone, Synth, Loop} from 'tone';
+import { getTransport, start as startTone, Synth, Loop, Recorder, getDestination, Volume} from 'tone';
 
 export class AudioEngine {
     constructor() {
@@ -9,6 +9,9 @@ export class AudioEngine {
         this.transport = getTransport();
         this.isReady = false;
         this.tracks = [];
+        this.trackIdCounter = 0; 
+        // Nodo de Volumen Maestro.
+        this.masterOut = new Volume(0).toDestination();
         //Definimos la longitud de nuestro loop maestro ---
         this.loopLengthInMeasures = 4; // Un loop de 4 compases
         // ¡NUEVO! Componentes del metrónomo
@@ -27,8 +30,8 @@ export class AudioEngine {
         }
         // startTone es la función que importamos de 'tone'
         await startTone();
-        // Creamos el sinte del metrónomo aquí
-        this.metronomeSynth = new Synth().toDestination();
+        // Creamos el sinte del metrónomo aquí se conecta al masterOut
+        this.metronomeSynth = new Synth().connect(this.masterOut);
 
         this.isReady = true;
         this.transport.bpm.value = 120;
@@ -49,6 +52,15 @@ export class AudioEngine {
         console.log("AudioEngine listo. El AudioContext está activo.");
     }
     /**
+     *
+     * @param {number} db El nuevo volumen en decibelios.
+     */
+    setMetronomeVolume(db) {
+        if (this.metronomeSynth) {
+            this.metronomeSynth.volume.value = db;
+        }
+    }
+    /**
      * 
      * @param {*} isOn 
      */
@@ -60,6 +72,14 @@ export class AudioEngine {
                 this.metronomeSynth.volume.value = -Infinity;
             }
         }
+    }
+    /*
+    * Permite ajustar el volumen maestro del motor de audio.
+    *
+    * @param {number} db El nuevo volumen en decibelios.
+    */
+    setMasterVolume(db) {
+        this.masterOut.volume.value = db;
     }
 
     /**
@@ -88,8 +108,9 @@ export class AudioEngine {
      * @returns {Track} La instancia de la nueva pista creada.
      */
     createNewTrack(recorderModule) {
-        const newTrackId = this.tracks.length + 1;
-        const newTrack = new Track(`Pista ${newTrackId}`, recorderModule);
+        // Usamos el contador y luego lo incrementamos.
+        const newTrackId = ++this.trackIdCounter; 
+        const newTrack = new Track(`Pista ${newTrackId}`, recorderModule, this.masterOut);
         this.addTrack(newTrack);
         console.log(`Pista ${newTrackId} creada dinámicamente.`);
         return newTrack;
@@ -164,5 +185,77 @@ export class AudioEngine {
             const newTrack = this.createNewTrack(this.recorderModule); // Asumiendo que recorderModule está disponible
             await newTrack.loadData(trackData);
         }
+    }
+    /**
+     * Une (bounce) varias pistas en una sola pista de audio nueva.
+     * @param {Track[]} tracksToBounce Un array con las instancias de las pistas a unir.
+     * @returns {Promise<void>}
+     */
+    async bounceTracks(tracksToBounce) {
+        if (tracksToBounce.length < 2) {
+            alert("Debes seleccionar al menos dos pistas para unir.");
+            return;
+        }
+        console.log("[BOUNCE] Iniciando proceso de unión...");
+
+        const bounceRecorder = new Recorder();
+        const mainDestination = getDestination();
+
+        tracksToBounce.forEach(track => {
+            track.channel.disconnect(mainDestination);
+            track.channel.connect(bounceRecorder);
+        });
+
+        // Usamos una promesa para que el exterior sepa cuándo hemos terminado.
+        return new Promise((resolve, reject) => {
+            // Agendamos el inicio de la grabación interna, esto es fiable.
+            this.transport.scheduleOnce(startTime => {
+                bounceRecorder.start();
+                console.log(`[BOUNCE] Grabadora interna capturando ciclo en t=${startTime.toFixed(2)}`);
+
+                // ¡AQUÍ VIENE EL OJO BIÓNICO!
+                let previousBar = -1;
+                let animationFrameId = null;
+
+                const watchForLoopEnd = async () => {
+                    const [currentBar] = this.transport.position.split(':').map(parseFloat);
+
+                    if (previousBar === -1) {
+                        previousBar = Math.floor(currentBar);
+                    }
+
+                    // Si el compás actual es menor que el anterior, el loop ha terminado.
+                    if (Math.floor(currentBar) < previousBar) {
+                        cancelAnimationFrame(animationFrameId); // Detenemos el observador
+
+                        try {
+                            const blob = await bounceRecorder.stop();
+                            console.log(`[BOUNCE] Grabación interna finalizada.`);
+
+                            const newTrack = this.createNewTrack(this.recorderModule);
+                            await newTrack.loadData({
+                                name: `Mezcla (${tracksToBounce.length})`,
+                                volume: 0, pan: 0, mute: false, audio: blob
+                            });
+
+                            console.log("[BOUNCE] Eliminando pistas originales...");
+                            tracksToBounce.forEach(track => this.deleteTrack(track));
+
+                            bounceRecorder.dispose();
+                            console.log("[BOUNCE] Proceso completado.");
+                            resolve(); // Resolvemos la promesa principal
+                        } catch (e) {
+                            reject(e);
+                        }
+                    } else {
+                        previousBar = Math.floor(currentBar);
+                        animationFrameId = requestAnimationFrame(watchForLoopEnd);
+                    }
+                };
+                // Iniciamos el observador
+                watchForLoopEnd();
+
+            }, "0");
+        });
     }
 }
