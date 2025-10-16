@@ -5,10 +5,12 @@ export class Track {
      * @param {string} name El nombre de la pista.
      * @param {RecorderModule} recorderModule Una referencia al módulo de grabación global.
      */
-    constructor(name, recorderModule, masterOut){
+    constructor(id, name, recorderModule, masterOut){
+        this.id = id;
         this.name = name;
         this.recorderModule = recorderModule; // Referencia al grabador
         this.state = 'empty'; // empty | armed | recording | has_loop
+        this.isArmed = false;
 
         this.pitchShift = new PitchShift(0);// Efecto de cambio de tono, inicializado a 0 semitonos
         this.filter = new Filter(20000, 'lowpass'); // Un filtro pasa-bajas, abierto por defecto (20000Hz)

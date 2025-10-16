@@ -1,7 +1,10 @@
 // AudioEngine.js
 // Usamos la importación selectiva para mantener el código limpio.
 import { Track } from '../modules/Track.js';
-import { getTransport, start as startTone, Synth, Loop, Recorder, getDestination, Volume} from 'tone';
+import { InstrumentTrack } from '../modules/InstrumentTrack.js';
+import { GesturePlayer } from '../modules/GesturePlayer.js';
+import { pointToMusicalData } from '../modules/Notation.js'; // <-- AÑADE ESTA LÍNEA
+import { getTransport, start as startTone, Synth, Loop, Recorder, getDestination, Volume, FMSynth} from 'tone';
 
 export class AudioEngine {
     constructor() {
@@ -17,6 +20,10 @@ export class AudioEngine {
         // ¡NUEVO! Componentes del metrónomo
         this.metronomeSynth = null;
         this.metronomeLoop = null;
+        this.tracks = []; // Este array ahora contendrá objetos de diferentes clases
+        this.activeTrack = null; // Referencia a la pista seleccionada actualmente
+        this.playbackSequence = null;
+        this.gesturePlayer = new GesturePlayer(); // Inicializamos el GesturePlayer
     }
 
     /**
@@ -30,6 +37,12 @@ export class AudioEngine {
         }
         // startTone es la función que importamos de 'tone'
         await startTone();
+        // Creamos el sinte de previsualización
+        this.previewSynth = new FMSynth({
+            harmonicity: 2,
+            modulationIndex: 10,
+            envelope: { attack: 0.01, decay: 0.2, release: 0.2 }
+        }).connect(this.masterOut);
         // Creamos el sinte del metrónomo aquí se conecta al masterOut
         this.metronomeSynth = new Synth().connect(this.masterOut);
 
@@ -49,7 +62,18 @@ export class AudioEngine {
         // Por defecto, el metrónomo está apagado (volumen a -infinito)
         this.metronomeSynth.volume.value = -Infinity;
 
-        console.log("AudioEngine listo. El AudioContext está activo.");
+        // --- CAMBIO CLAVE: ELIMINAMOS EL BUCLE ANTIGUO Y DEJAMOS SOLO EL CORRECTO ---
+        // Este es el único bucle de reproducción que necesitamos. Su única tarea es
+        // darle un "pulso" de alta frecuencia a nuestro GesturePlayer.
+        new Loop(time => {
+            const currentBeats = this.transport.ticks / this.transport.PPQ;
+            
+            // El AudioEngine delega toda la lógica de reproducción al GesturePlayer.
+            this.gesturePlayer.update(currentBeats, time);
+
+        }, "60n").start(0); // Frecuencia alta para una reproducción fluida.
+
+            console.log("AudioEngine listo. El AudioContext está activo.");
     }
     /**
      *
@@ -87,6 +111,7 @@ export class AudioEngine {
      * @param {number} measures La nueva longitud del loop en compases.
      */
     setLoopLength(measures) {
+        if (measures < 1) return; // Evitar valores no válidos
         this.loopLengthInMeasures = measures;
         if (this.isReady) {
             this.transport.loopEnd = `${measures}m`;
@@ -103,19 +128,63 @@ export class AudioEngine {
     }
 
     /**
-     * Crea una nueva pista, la añade al motor y la devuelve.
-     * @param {RecorderModule} recorderModule La referencia al módulo de grabación.
-     * @returns {Track} La instancia de la nueva pista creada.
+     * Crea una nueva pista de AUDIO, la añade al motor y la devuelve.
+     * @param {string} name - El nombre para la nueva pista.
+     * @returns {Track} La instancia de la nueva pista de audio.
      */
-    createNewTrack(recorderModule) {
-        // Usamos el contador y luego lo incrementamos.
-        const newTrackId = ++this.trackIdCounter; 
-        const newTrack = new Track(`Pista ${newTrackId}`, recorderModule, this.masterOut);
-        this.addTrack(newTrack);
-        console.log(`Pista ${newTrackId} creada dinámicamente.`);
+    createAudioTrack(name) {
+        const newId = this.trackIdCounter++;
+        const newTrack = new Track(newId, name, this.recorderModule, this.masterOut);
+        this.tracks.push(newTrack);
+        console.log(`Pista de Audio "${name}" (ID: ${newId}) creada.`);
+        if (!this.activeTrack) {
+            this.setActiveTrack(newTrack);
+        }
         return newTrack;
     }
 
+    /**
+     * Crea una nueva pista de INSTRUMENTO, la añade al motor y la devuelve.
+     * @param {string} name - El nombre para la nueva pista.
+     * @returns {InstrumentTrack} La instancia de la nueva pista de instrumento.
+     */
+    createInstrumentTrack(name) {
+        const newId = this.trackIdCounter++; 
+        const newTrack = new InstrumentTrack(newId, name, this.masterOut, this.gesturePlayer); // Pasamos el ID al constructor
+        this.tracks.push(newTrack);
+        console.log(`Pista de Instrumento "${name}" (ID: ${newId}) creada.`);
+        if (!this.activeTrack) {
+            this.setActiveTrack(newTrack);
+        }
+        return newTrack;
+    }
+    /**
+     * Busca una pista por su ID y cambia su estado de 'armado' (preparado para grabar).
+     * @param {number} trackId El ID de la pista a modificar.
+     * @returns {boolean|null} El nuevo estado 'isArmed' de la pista, o null si no se encontró.
+     */
+    toggleArmTrackById(trackId) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (track) {
+            track.isArmed = !track.isArmed;
+            if (!track.isArmed && typeof track.clearSequence === 'function') {
+                track.clearSequence();
+            }
+            console.log(`Pista "${track.name}" ${track.isArmed ? 'ARMADA' : 'DESARMADA'}.`);
+            return track.isArmed;
+        }
+        return null;
+    }
+    
+    /**
+     * Establece cuál es la pista activa.
+     * @param {Track|InstrumentTrack} trackToActivate - La instancia de la pista a activar.
+     */
+    setActiveTrack(trackToActivate) {
+        this.activeTrack = trackToActivate;
+        console.log(`Pista activa ahora es: "${this.activeTrack.name}"`);
+        // Aquí, en el futuro, notificaremos a la VisualScene para que actualice la UI.
+    }
     /**
      * Elimina una pista del motor de forma segura, asegurando la limpieza de memoria.
      * @param {Track} trackToDelete La instancia de la pista que se va a eliminar.
@@ -149,6 +218,7 @@ export class AudioEngine {
         } else {
             this.transport.start();
         }
+        return this.transport.state; 
     }
 
     /**
@@ -160,6 +230,67 @@ export class AudioEngine {
             position: this.transport.position,
             state: this.transport.state,
             bpm: this.transport.bpm.value
+        };
+    }
+    /**
+     * Devuelve el BPM actual del transporte.
+     * @returns {number}
+     */
+    getBPM() {
+        if (this.transport) {
+            return this.transport.bpm.value;
+        }
+        return 120; // Devuelve un valor por defecto si el transporte no está listo
+    }
+    /**
+     * Establece un nuevo BPM para el transporte.
+     * @param {number} bpm El nuevo tempo en beats por minuto.
+     */
+    setBPM(bpm) {
+        if (this.transport) {
+            this.transport.bpm.value = bpm;
+        }
+    }
+    /**
+     * Devuelve el compás actual dentro del loop maestro.
+     * @returns {number} - El índice del compás actual (0-3) o -1 si está detenido.
+     */
+    getCurrentMeasure() {
+        if (this.transport && this.transport.state === 'started') {
+            const [bar] = this.transport.position.split(':');
+            // Usamos el operador de módulo para que el número siempre esté dentro del rango de nuestro loop
+            return parseInt(bar) % this.loopLengthInMeasures;
+        }
+        return -1; // No hay compás activo si el transporte está detenido
+    }
+    /**
+     * Devuelve el tiempo (beat) actual dentro del loop maestro.
+     * @returns {number} - El índice del tiempo actual (0-15) o -1 si está detenido.
+     */
+    getCurrentBeat() {
+        if (this.transport && this.transport.state === 'started') {
+            const timeSignature = this.transport.timeSignature; // Usualmente 4
+            const [bar, beat] = this.transport.position.split(':').map(parseFloat);
+            
+            // Calculamos el beat absoluto dentro del ciclo del loop
+            const currentBeatInLoop = (parseInt(bar) % this.loopLengthInMeasures) * timeSignature + Math.floor(beat);
+            return currentBeatInLoop;
+        }
+        return -1; // No hay beat activo si el transporte está detenido
+    }
+    /**
+     * Devuelve la longitud actual del loop en compases.
+     * @returns {number}
+     */
+    getLoopLength() {
+        return this.loopLengthInMeasures;
+    }
+
+    //crea un getter for getTransportState
+    getTransportState() {
+        return {
+            // ...
+            beats: this.transport.ticks / this.transport.PPQ
         };
     }
 
@@ -186,6 +317,44 @@ export class AudioEngine {
             await newTrack.loadData(trackData);
         }
     }
+    // Synte
+    playPreviewNote({ coords, active }) {
+        if (!this.previewSynth) return;
+
+        if (active && coords) {
+            // 1. TRADUCIMOS las coordenadas a datos musicales aquí, en el motor de audio.
+            const musicalData = pointToMusicalData(coords.x, coords.y);
+
+            // 2. Verificamos que la traducción fue exitosa.
+            if (musicalData) {
+                console.log(`Preview Note - Freq: ${musicalData.freq}, Velocity: ${musicalData.velocity}, Active: ${active}`);
+                
+                // 3. Usamos los datos musicales correctos para controlar el sinte.
+                const volumeInDb = -30 + musicalData.velocity * 30;
+                this.previewSynth.volume.value = volumeInDb;
+                this.previewSynth.triggerAttack(musicalData.freq);
+            }
+        } else {
+            this.previewSynth.triggerRelease();
+        }
+    }
+
+    /**
+     * Encuentra una pista y le ordena que inicie su proceso de armado/grabación.
+     * Después de grabar, inicia la reproducción automáticamente.
+     * @param {number} trackId - El ID de la pista.
+     */
+    armTrackForRecording(trackId) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (track && typeof track.armRecord === 'function') {
+            // Simplemente le ordenamos a la pista que se arme. Ella se encargará del resto.
+            track.armRecord(); 
+            return { state: 'armed' }; 
+        }
+        return null;
+    }
+
+    // <-- Synth
     /**
      * Une (bounce) varias pistas en una sola pista de audio nueva.
      * @param {Track[]} tracksToBounce Un array con las instancias de las pistas a unir.
