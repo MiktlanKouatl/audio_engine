@@ -191,6 +191,31 @@ function init() {
         const currentBeat = audioEngine.getCurrentBeat();
         visualScene.setActiveBeat(currentBeat);
 
+        // --- LÓGICA DE ACTUALIZACIÓN DEL DEDO FANTASMA ---
+        const activeTrack = audioEngine.activeTrack;
+        
+        // Recorremos todas las pistas que existen en el motor.
+        audioEngine.tracks.forEach(track => {
+            // Solo nos interesan las pistas de instrumento que tienen un fantasma.
+            if (track instanceof InstrumentTrack) {
+                // Obtenemos la coordenada actual del gesto para esta pista desde el GesturePlayer.
+                const coord = audioEngine.gesturePlayer.getCurrentCoordinate(track.id);
+                let isVisible = false;
+
+                // Lógica de visibilidad que tú mismo propusiste:
+                if (activeTrack) {
+                    // Si hay una pista activa, solo mostramos su fantasma.
+                    isVisible = (activeTrack.id === track.id);
+                } else {
+                    // Si no hay ninguna pista activa, los mostramos todos.
+                    isVisible = true;
+                }
+                
+                // Le damos la orden final a la escena visual para que actualice este fantasma.
+                visualScene.updateGhostFinger(track.id, coord, isVisible);
+            }
+        });
+
         requestAnimationFrame(uiUpdateLoop);
     }
     
