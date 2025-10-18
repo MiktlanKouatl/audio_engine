@@ -1,5 +1,6 @@
 // main.js
 import { AudioEngine } from './engines/AudioEngine.js';
+import { SphereManager } from './managers/SphereManager.js';
 import { VisualScene } from './modules/VisualScene.js';
 import { GestureLibrary } from './modules/GestureLibrary.js';
 import { InstrumentTrack } from './modules/InstrumentTrack.js'; // Asegúrate que esta importación esté
@@ -7,22 +8,17 @@ import { InstrumentTrack } from './modules/InstrumentTrack.js'; // Asegúrate qu
 function init() {
     console.log("Inicializando aplicación...");
 
-    // Estado de la aplicación para gestionar interacciones complejas
+    // Estado de la aplicación
     let appState = {
         isTyping: false,
         isRecordingArmed: false,
         isMetronomeOn: false 
     };
 
-    // Almacenamiento de las pistas creadas en la sesión actual
-    const createdTracks = {
-        'audio-slot-1': null,
-        'instrument-slot-1': null
-    };
-
     // Módulos principales
     const audioEngine = new AudioEngine();
     const visualScene = new VisualScene('scene-container');
+    const sphereManager = new SphereManager();
 
     // Conexión central: La escena visual notifica a main.js sobre las interacciones
     visualScene.onInteraction = (data) => {
@@ -41,8 +37,6 @@ function init() {
                 audioEngine.playPreviewNote(data);
                 break;
             case 'fx-update':
-                 // Dejamos esto preparado para cuando implementemos los FX
-                // audioEngine.updateActiveTrackFX(data.x, data.y);
                 break;
         }
     };
@@ -50,52 +44,37 @@ function init() {
     // Función que maneja los clics en los elementos interactivos de la UI 3D
     function handleUIClick(elementName) {
 
-        // --- LÓGICA DE ARMADO --->
         if (elementName.startsWith('rec-arm-track-')) {
             const trackId = parseInt(elementName.split('-').pop());
-            
-            // ANTES: const result = audioEngine.armTrackForQuantizedRecording(trackId);
-            // AHORA:
             const result = audioEngine.armTrackForRecording(trackId);
-            
             if (result) {
-                // La UI mostrará 'armed' (botón verde). El cambio a 'recording' (ej. rojo parpadeante)
-                // lo manejaremos en el futuro escuchando los cambios de estado de la pista.
                 visualScene.setTrackUIArmedState(trackId, result.state === 'armed');
             }
             return;
         }
-        // <--- LÓGICA DE ARMADO ---
-        // --- LÓGICA DE SELECCIÓN DE PISTA! --->
+
         if (elementName.startsWith('track-select-')) {
             const trackId = parseInt(elementName.split('-').pop());
-            
-            // Buscamos el objeto de la pista en nuestro registro
-            const trackObject = Object.values(createdTracks).find(t => t && t.id === trackId);
+            const trackObject = audioEngine.tracks.find(t => t.id === trackId);
             
             if (trackObject) {
-                // 1. Le decimos al AudioEngine cuál es la nueva pista activa
                 audioEngine.setActiveTrack(trackObject);
-                // 2. Le decimos a la VisualScene que actualice el contorno
                 visualScene.setActiveTrackUI(trackId);
             }
             return;
         }
-        // <--- LÓGICA DE SELECCIÓN DE PISTA ---
         
         let currentBPM = audioEngine.getBPM();
-        let loopLength = audioEngine.getLoopLength(); // ¡Ahora podemos obtener el valor!
+        let loopLength = audioEngine.getLoopLength();
 
         switch (elementName) {
             case 'transport-toggle':
-            const transportState = audioEngine.toggleTransport();
-            const activeTrack = audioEngine.activeTrack;
-
-            // Si detenemos el transporte, también detenemos la reproducción del gesto.
-            if (transportState === 'stopped' && activeTrack) {
-                audioEngine.gesturePlayer.stopGesture(activeTrack.id);
-            }
-            break;
+                const transportState = audioEngine.toggleTransport();
+                const activeTrack = audioEngine.activeTrack;
+                if (transportState === 'stopped' && activeTrack) {
+                    audioEngine.gesturePlayer.stopGesture(activeTrack.id);
+                }
+                break;
             case 'tempo-increment':
                 audioEngine.setBPM(currentBPM + 1);
                 break;
@@ -105,57 +84,62 @@ function init() {
             case 'measures-increment':
                 loopLength++;
                 audioEngine.setLoopLength(loopLength);
-                visualScene.rebuildVisualizers(loopLength, 4); // Asumiendo 4/4
+                visualScene.rebuildVisualizers(loopLength, 4);
                 visualScene.updateMeasuresDisplay(loopLength);
                 break;
             case 'measures-decrement':
-                if (loopLength > 1) { // Evitar ir a 0 o menos compases
+                if (loopLength > 1) {
                     loopLength--;
                     audioEngine.setLoopLength(loopLength);
-                    visualScene.rebuildVisualizers(loopLength, 4); // Asumiendo 4/4
+                    visualScene.rebuildVisualizers(loopLength, 4);
                     visualScene.updateMeasuresDisplay(loopLength);
                 }
                 break;
             case 'metronome-toggle':
-                // 1. Invertimos el estado
                 appState.isMetronomeOn = !appState.isMetronomeOn;
-                // 2. Le decimos al AudioEngine qué hacer
                 audioEngine.toggleMetronome(appState.isMetronomeOn);
-                // 3. Le decimos a la VisualScene que actualice el color del botón
                 visualScene.toggleMetronomeVisuals(appState.isMetronomeOn);
                 break;
-            case 'create-audio-track':
-                // Por ahora, solo permitimos crear una pista de cada tipo para simplificar
-                if (!createdTracks['audio-slot-1']) {
-                    const newAudioTrack = audioEngine.createAudioTrack('Loop Audio');
-                    createdTracks['audio-slot-1'] = newAudioTrack;
-                    
-                    // ¡CONEXIÓN CLAVE! Le pedimos a la escena que dibuje la UI para esta nueva pista.
+
+            case 'create-audio-track': {
+                const newAudioTrack = audioEngine.createAudioTrack('Loop Audio');
+                const position = sphereManager.addTrack(newAudioTrack.id);
+
+                if (position) {
                     visualScene.createTrackUI({
                         id: newAudioTrack.id,
                         name: newAudioTrack.name,
-                        type: 'audio'
+                        type: 'audio',
+                        position: position
                     });
+                    audioEngine.setActiveTrack(newAudioTrack);
+                    visualScene.setActiveTrackUI(newAudioTrack.id);
+                } else {
+                    audioEngine.deleteTrack(newAudioTrack);
+                    console.log("No se pudo crear la pista: no hay más slots.");
                 }
-                audioEngine.setActiveTrack(createdTracks['audio-slot-1']);
-                // visualScene.setActiveSlot(elementName); // Esta línea ya no es necesaria
                 break;
+            }
 
-            case 'create-instrument-track':
-                if (!createdTracks['instrument-slot-1']) {
-                    const newInstrumentTrack = audioEngine.createInstrumentTrack('Instrumento');
-                    createdTracks['instrument-slot-1'] = newInstrumentTrack;
+            case 'create-instrument-track': {
+                const newInstrumentTrack = audioEngine.createInstrumentTrack('Instrumento');
+                const position = sphereManager.addTrack(newInstrumentTrack.id);
 
-                    // ¡CONEXIÓN CLAVE! Le pedimos a la escena que dibuje la UI para esta nueva pista.
+                if (position) {
                     visualScene.createTrackUI({
                         id: newInstrumentTrack.id,
                         name: newInstrumentTrack.name,
-                        type: 'instrument'
+                        type: 'instrument',
+                        position: position
                     });
+                    audioEngine.setActiveTrack(newInstrumentTrack);
+                    visualScene.setActiveTrackUI(newInstrumentTrack.id);
+                } else {
+                    audioEngine.deleteTrack(newInstrumentTrack);
+                    console.log("No se pudo crear la pista: no hay más slots.");
                 }
-                audioEngine.setActiveTrack(createdTracks['instrument-slot-1']);
-                // visualScene.setActiveSlot(elementName); // Esta línea ya no es necesaria
                 break;
+            }
         }
     }
 
@@ -180,7 +164,7 @@ function init() {
         }
     });
 
-    // Bucle principal para mantener la UI 3D sincronizada con el estado del AudioEngine
+    // Bucle principal de actualización
     function uiUpdateLoop() {
         const currentBPM = audioEngine.getBPM();
         visualScene.updateTempoDisplay(currentBPM);
@@ -191,27 +175,12 @@ function init() {
         const currentBeat = audioEngine.getCurrentBeat();
         visualScene.setActiveBeat(currentBeat);
 
-        // --- LÓGICA DE ACTUALIZACIÓN DEL DEDO FANTASMA ---
         const activeTrack = audioEngine.activeTrack;
         
-        // Recorremos todas las pistas que existen en el motor.
         audioEngine.tracks.forEach(track => {
-            // Solo nos interesan las pistas de instrumento que tienen un fantasma.
             if (track instanceof InstrumentTrack) {
-                // Obtenemos la coordenada actual del gesto para esta pista desde el GesturePlayer.
                 const coord = audioEngine.gesturePlayer.getCurrentCoordinate(track.id);
-                let isVisible = false;
-
-                // Lógica de visibilidad que tú mismo propusiste:
-                if (activeTrack) {
-                    // Si hay una pista activa, solo mostramos su fantasma.
-                    isVisible = (activeTrack.id === track.id);
-                } else {
-                    // Si no hay ninguna pista activa, los mostramos todos.
-                    isVisible = true;
-                }
-                
-                // Le damos la orden final a la escena visual para que actualice este fantasma.
+                let isVisible = activeTrack ? (activeTrack.id === track.id) : true;
                 visualScene.updateGhostFinger(track.id, coord, isVisible);
             }
         });
@@ -219,8 +188,7 @@ function init() {
         requestAnimationFrame(uiUpdateLoop);
     }
     
-    // Iniciar todo
-    // Necesitamos un botón de "Start" para que el usuario inicie el AudioContext
+    // Botón de inicio
     const startButton = document.createElement('button');
     startButton.id = 'start-audio-button';
     startButton.textContent = '▶ Iniciar Motor de Audio';
@@ -229,8 +197,8 @@ function init() {
     startButton.addEventListener('click', async () => {
         await audioEngine.start();
         console.log("Motor de Audio iniciado por el usuario.");
-        uiUpdateLoop(); // Inicia el bucle de actualización solo después de que el motor arranque
-        startButton.style.display = 'none'; // Oculta el botón después de usarlo
+        uiUpdateLoop();
+        startButton.style.display = 'none';
     }, { once: true });
 }
 

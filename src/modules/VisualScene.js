@@ -1,6 +1,8 @@
 // src/modules/VisualScene.js
 
 import * as THREE from 'three';
+import vertexShader from '/public/shaders/mainSphere.vert?raw';
+import fragmentShader from '/public/shaders/mainSphere.frag?raw';
 import { Text } from 'troika-three-text';
 import { GhostFinger } from './GhostFinger.js';
 
@@ -75,6 +77,10 @@ export class VisualScene {
         this.interactiveControls = [];
         this.activeSlotMaterial = new THREE.MeshBasicMaterial({ color: 0x01FF70 });
         this.onInteraction = null;
+
+        // Propiedades para la rotación de la esfera
+        this.isDraggingSphere = false;
+        this.previousPointerPosition = { x: 0, y: 0 };
         
         this._init();
     }
@@ -111,11 +117,8 @@ export class VisualScene {
         this.instrumentContainer = new THREE.Group();
         this.uiContainer.add(this.instrumentContainer);
         
-        const discoGeometry = new THREE.CircleGeometry(10, 128);
-        const discoMaterial = new THREE.MeshStandardMaterial({ color: 0x1A1A1A, side: THREE.DoubleSide });
-        this.disco = new THREE.Mesh(discoGeometry, discoMaterial);
-        this.instrumentContainer.add(this.disco);
-        this.instrumentContainer.position.y = -7.5;
+        // Reemplazado por la esfera de puntos con shaders
+        // this.instrumentContainer.position.y = -7.5;
 
         this.interactionLight = new THREE.PointLight(0x01FF70, 0, .55);
         this.scene.add(this.interactionLight);
@@ -134,7 +137,43 @@ export class VisualScene {
         this.container.addEventListener('pointermove', this._onPointerMove.bind(this));
         window.addEventListener('resize', this._onWindowResize.bind(this), false);
         
+        // Creamos un disco invisible que servirá únicamente para la interacción del instrumento.
+        const discoGeometry = new THREE.CircleGeometry(10, 128);
+        const discoMaterial = new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide });
+        this.disco = new THREE.Mesh(discoGeometry, discoMaterial);
+        this.instrumentContainer.add(this.disco);
+        this.instrumentContainer.position.y = -7.5;
+
+        this._createMainSphere();
         this._animate();
+    }
+
+    _createMainSphere() {
+        // Bajamos la resolución para optimizar. 64x64 es un buen balance.
+        const sphereGeometry = new THREE.SphereGeometry(3.5, 64, 64);
+
+        this.shaderUniforms = {
+            u_time: { value: 0.0 },
+            // Aumentamos el tamaño del punto para compensar la menor densidad.
+            u_point_size: { value: 2.5 },
+            u_effect_type: { value: 1 } // 0: Ondas Alpha, 1: Desplazamiento de Vértices
+        };
+
+        const pointsMaterial = new THREE.ShaderMaterial({
+            uniforms: this.shaderUniforms,
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+
+        this.mainSphere = new THREE.Points(sphereGeometry, pointsMaterial);
+        
+        // Rotamos la esfera para que la 'costura' de la geometría no quede visible al frente.
+        this.mainSphere.rotation.y = Math.PI / 2;
+
+        this.scene.add(this.mainSphere);
     }
 
     // --- LÓGICA DE INTERACCIÓN RESTAURADA Y FUNCIONAL ---
@@ -415,41 +454,31 @@ export class VisualScene {
         this.globalControlsContainer.add(this.activeMeasureIndicator);
     }
 
-    /**
-     * Recalcula y actualiza la posición de todos los componentes de UI de las pistas
-     * para que se espacien uniformemente en un arco.
-     */
+    /* MÉTODO OBSOLETO - La posición ahora la gestiona SphereManager
     repositionTracks() {
         const opts = this.trackUIOptions;
         const trackIds = Object.keys(this.trackUIComponents);
         const numTracks = trackIds.length;
 
-        // Si no hay pistas, no hacemos nada.
         if (numTracks === 0) return;
 
-        // Calculamos el rango angular total disponible.
         const angleSweep = opts.endAngle - opts.startAngle;
-        
-        // Calculamos el espacio angular para cada pista.
-        // Si solo hay una, la centramos. Si hay más, dividimos el espacio.
         const angleStep = numTracks > 1 ? angleSweep / (numTracks - 1) : 0;
 
         trackIds.forEach((id, index) => {
             const trackUI = this.trackUIComponents[id];
             
-            // El ángulo para esta pista. Si solo hay una, se coloca en el centro del arco.
             const angle = numTracks > 1 
                 ? opts.startAngle + (index * angleStep)
                 : (opts.startAngle + opts.endAngle) / 2;
 
-            // Convertimos coordenadas polares (ángulo, radio) a cartesianas (x, y).
             const x = Math.cos(angle) * opts.radius;
             const y = Math.sin(angle) * opts.radius;
 
-            // Aplicamos la nueva posición.
             trackUI.position.set(x, y, 0.1);
         });
     }
+    */
     
     createNewTrackButtons() {
         // --- Botón para Crear Pista de Audio ---
@@ -510,77 +539,59 @@ export class VisualScene {
         this.interactiveControls.push(instrumentHitbox);
     }
     
-    /**
-     * Crea y posiciona la UI para una nueva pista en la escena.
-     * @param {{id: number, name: string, type: 'audio'|'instrument'}} trackData
-     */
     createTrackUI(trackData) {
-        const trackGroup = new THREE.Group();
-        trackGroup.name = `track-ui-${trackData.id}`;
+        // 1. CREAR LA BASE DEL WIDGET (UN GRUPO)
+        const trackWidget = new THREE.Group();
 
-        // --- ¡NUEVO! Indicador de Selección (Contorno) ---
-        const outlineGeo = new THREE.RingGeometry(0.85, 0.95, 32);
-        const outlineMat = new THREE.MeshBasicMaterial({ color: 0x01FF70 }); // Verde "activo"
-        const outline = new THREE.Mesh(outlineGeo, outlineMat);
-        outline.visible = false; // Oculto por defecto
-        trackGroup.add(outline);
-        trackGroup.userData.outline = outline; // Guardamos la referencia
+        // 2. POSICIONAR Y ORIENTAR LA BASE
+        // La colocamos en su lugar sobre la esfera
+        trackWidget.position.copy(trackData.position);
+        // Hacemos que "mire" hacia el centro de la esfera para alinearse con la curvatura
+        trackWidget.lookAt(0, 0, 0);
 
-        // Visual base (un círculo)
-        const bgGeometry = new THREE.CircleGeometry(0.8, 32);
-        const bgMaterial = new THREE.MeshBasicMaterial({ 
-            color: trackData.type === 'instrument' ? 0x0074D9 : 0xFF4136 
+        // 3. CONSTRUIR LOS COMPONENTES SOBRE LA BASE
+
+        // --- Botón de Selección (el círculo principal) ---
+        const selectGeo = new THREE.CircleGeometry(0.3, 32); // Un poco más grande
+        const selectMat = new THREE.MeshStandardMaterial({
+            color: trackData.type === 'instrument' ? 0x0074D9 : 0xFF4136,
+            metalness: 0.4,
+            roughness: 0.6,
+            side: THREE.DoubleSide // <-- SOLUCIÓN: Hacer visible por ambos lados
         });
-        const background = new THREE.Mesh(bgGeometry, bgMaterial);
-        // --- Hacemos que el fondo sea el botón de selección ---
-        background.name = `track-select-${trackData.id}`;
-        this.interactiveControls.push(background); // Lo añadimos a los objetos clickeables
-        trackGroup.add(background);
+        const selectButton = new THREE.Mesh(selectGeo, selectMat);
+        selectButton.name = `track-select-${trackData.id}`;
+        this.interactiveControls.push(selectButton);
+        trackWidget.add(selectButton);
 
-        // Nombre de la pista
-        const nameText = new Text();
-        nameText.text = trackData.name;
-        nameText.font = '../GoogleSansCode-VariableFont_wght.ttf';
-        nameText.fontSize = 0.2;
-        nameText.color = 0xFFFFFF;
-        nameText.anchorX = 'center';
-        nameText.anchorY = 'middle';
-        nameText.position.z = 0.01;
-        trackGroup.add(nameText);
-        nameText.sync();
+        // --- Indicador de Selección (el aro verde) ---
+        const indicatorGeo = new THREE.RingGeometry(0.32, 0.37, 32);
+        const indicatorMat = new THREE.MeshBasicMaterial({ color: 0x01FF70, side: THREE.DoubleSide });
+        const selectionIndicator = new THREE.Mesh(indicatorGeo, indicatorMat);
+        selectionIndicator.visible = false; // Oculto por defecto
+        selectionIndicator.position.z = 0.01; // Ligeramente por encima para evitar z-fighting
+        trackWidget.add(selectionIndicator);
+        trackWidget.userData.selectionIndicator = selectionIndicator;
 
         // --- Botón de Grabación (REC) ---
-        const recButtonGeo = new THREE.CircleGeometry(0.2, 16);
-        // Usamos el material 'apagado' por defecto. Reutilizamos el del metrónomo por ahora.
-        const recButton = new THREE.Mesh(recButtonGeo, this.metronomeOffMaterial.clone()); 
+        const recGeo = new THREE.CircleGeometry(0.1, 16);
+        const recMat = this.metronomeOffMaterial.clone(); // Reutilizamos el material gris
+        const recButton = new THREE.Mesh(recGeo, recMat);
         recButton.name = `rec-arm-track-${trackData.id}`;
-        recButton.position.set(0, 0, 0.02);
-        trackGroup.add(recButton);
+        recButton.position.set(0, 0, 0.02); // <-- CAMBIO: Lo movemos al centro
         this.interactiveControls.push(recButton);
-        trackGroup.userData.recButton = recButton;
+        trackWidget.add(recButton);
+        trackWidget.userData.recButton = recButton;
 
-        this.sequenceControlsContainer.add(trackGroup);
-        this.trackUIComponents[trackData.id] = trackGroup; // Guardamos la referencia
+        // 4. AÑADIR EL WIDGET COMPLETO A LA ESFERA
+        if (this.mainSphere) {
+            this.mainSphere.add(trackWidget);
+        }
 
-        // --- NUEVA LÓGICA DE GHOSTFINGER ---
-        // Asignamos un color basado en el tipo de pista.
-        const ghostColor = trackData.type === 'instrument' ? 0x00AFFF : 0xFF851B; // Cian para instrumento, Naranja para audio
-        const ghostFinger = new GhostFinger(trackData.id, ghostColor);
+        // 5. GUARDAR REFERENCIA
+        this.trackUIComponents[trackData.id] = trackWidget;
 
-        // Guardamos la INSTANCIA completa, no solo el mesh.
-        this.ghostFingers.set(trackData.id, ghostFinger); 
-
-        // Añadimos el MESH del fantasma al contenedor del instrumento para que se renderice.
-        this.instrumentContainer.add(ghostFinger.mesh);
-
-        // Lógica de posicionamiento simple: las pone en fila
-        /* const trackCount = Object.keys(this.trackUIComponents).length;
-        const spacing = 2.0;
-        const startX = -((trackCount * spacing) / 2) + (spacing / 2);
-        trackGroup.position.set(startX + (trackCount * spacing), -4.5, 0.1); */
-        this.repositionTracks();
-        
-        
+        console.log(`Widget de Pista UI creado para el track ${trackData.id}`);
     }
 
     /*
@@ -630,10 +641,10 @@ export class VisualScene {
     setActiveTrackUI(activeTrackId) {
         // Recorremos todos los componentes de UI de las pistas
         for (const id in this.trackUIComponents) {
-            const trackUI = this.trackUIComponents[id];
-            if (trackUI && trackUI.userData.outline) {
-                // La visibilidad del contorno es verdadera solo si su ID coincide con el activo
-                trackUI.userData.outline.visible = (parseInt(id) === activeTrackId);
+            const trackButton = this.trackUIComponents[id];
+            if (trackButton && trackButton.userData.selectionIndicator) {
+                // La visibilidad del indicador es verdadera solo si su ID coincide con el activo
+                trackButton.userData.selectionIndicator.visible = (parseInt(id) === activeTrackId);
             }
         }
     }
@@ -703,16 +714,61 @@ export class VisualScene {
         }
     }
     
-    _onPointerDown(event) { this.isInteracting = true; this._handleInteraction(event); }
+    _onPointerDown(event) {
+        this.pointer.x = (event.clientX / this.container.clientWidth) * 2 - 1;
+        this.pointer.y = -(event.clientY / this.container.clientHeight) * 2 + 1;
+        this.raycaster.setFromCamera(this.pointer, this.camera);
+
+        // Primero, comprobamos si estamos haciendo clic en un control de UI
+        const controlIntersects = this.raycaster.intersectObjects(this.interactiveControls);
+        if (controlIntersects.length > 0) {
+            if (this.onInteraction) this.onInteraction({ type: 'ui-click', element: controlIntersects[0].object.name });
+            return; // Si es un control, no hacemos nada más
+        }
+
+        // Segundo, comprobamos si estamos haciendo clic en la esfera
+        const sphereIntersects = this.raycaster.intersectObject(this.mainSphere);
+        if (sphereIntersects.length > 0) {
+            this.isDraggingSphere = true;
+            this.previousPointerPosition = { x: event.clientX, y: event.clientY };
+            return; // Interacción de arrastre de esfera
+        }
+        
+        // Si no es la esfera, entonces es una interacción con el instrumento (disco invisible)
+        this.isInteracting = true; 
+        this._handleInteraction(event); 
+    }
     _onPointerUp(event) {
-        this.isInteracting = false;
+        this.isDraggingSphere = false; // Dejamos de arrastrar la esfera
+        this.isInteracting = false; // Dejamos de interactuar con el instrumento
+        
         this.interactionLight.intensity = 0;
         if (this.onInteraction) this.onInteraction({ type: 'disc-drag', active: false });
     }
-    _onPointerMove(event) { if (this.isInteracting) this._handleInteraction(event); }
+    _onPointerMove(event) {
+        if (this.isDraggingSphere) {
+            const deltaX = event.clientX - this.previousPointerPosition.x;
+            const deltaY = event.clientY - this.previousPointerPosition.y;
+
+            // La rotación en Y (horizontal) depende del movimiento en X del ratón
+            this.mainSphere.rotation.y += deltaX * 0.005;
+            // La rotación en X (vertical) depende del movimiento en Y del ratón
+            this.mainSphere.rotation.x += deltaY * 0.005;
+
+            this.previousPointerPosition = { x: event.clientX, y: event.clientY };
+        } else if (this.isInteracting) {
+            this._handleInteraction(event);
+        }
+    }
     
     _animate() {
         requestAnimationFrame(this._animate.bind(this));
+
+        // Actualizamos los uniforms del shader en cada fotograma.
+        if (this.shaderUniforms) {
+            this.shaderUniforms.u_time.value += 0.005; // Esta velocidad se puede ajustar.
+        }
+
         this.renderer.render(this.scene, this.camera);
     }
 }

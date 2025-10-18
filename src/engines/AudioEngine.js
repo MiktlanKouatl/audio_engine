@@ -2,6 +2,7 @@
 // Usamos la importación selectiva para mantener el código limpio.
 import { Track } from '../modules/Track.js';
 import { InstrumentTrack } from '../modules/InstrumentTrack.js';
+import { RecorderModule } from '../modules/RecorderModule.js';
 import { GesturePlayer } from '../modules/GesturePlayer.js';
 import { pointToMusicalData } from '../modules/Notation.js'; // <-- AÑADE ESTA LÍNEA
 import { getTransport, start as startTone, Synth, Loop, Recorder, getDestination, Volume, FMSynth} from 'tone';
@@ -17,13 +18,15 @@ export class AudioEngine {
         this.masterOut = new Volume(0).toDestination();
         //Definimos la longitud de nuestro loop maestro ---
         this.loopLengthInMeasures = 4; // Un loop de 4 compases
-        // ¡NUEVO! Componentes del metrónomo
+        
+        // Componentes
         this.metronomeSynth = null;
         this.metronomeLoop = null;
-        this.tracks = []; // Este array ahora contendrá objetos de diferentes clases
-        this.activeTrack = null; // Referencia a la pista seleccionada actualmente
-        this.playbackSequence = null;
-        this.gesturePlayer = new GesturePlayer(); // Inicializamos el GesturePlayer
+        this.activeTrack = null;
+        this.gesturePlayer = new GesturePlayer();
+
+        // ¡SOLUCIÓN! Creamos la instancia del RecorderModule aquí.
+        this.recorderModule = new RecorderModule(this.transport);
     }
 
     /**
@@ -37,6 +40,10 @@ export class AudioEngine {
         }
         // startTone es la función que importamos de 'tone'
         await startTone();
+
+        // ¡SOLUCIÓN! Inicializamos el micrófono aquí, como parte del gesto del usuario.
+        await this.recorderModule.initializeMicrophone();
+
         // Creamos el sinte de previsualización
         this.previewSynth = new FMSynth({
             harmonicity: 2,
@@ -62,18 +69,13 @@ export class AudioEngine {
         // Por defecto, el metrónomo está apagado (volumen a -infinito)
         this.metronomeSynth.volume.value = -Infinity;
 
-        // --- CAMBIO CLAVE: ELIMINAMOS EL BUCLE ANTIGUO Y DEJAMOS SOLO EL CORRECTO ---
-        // Este es el único bucle de reproducción que necesitamos. Su única tarea es
-        // darle un "pulso" de alta frecuencia a nuestro GesturePlayer.
+        // Bucle de alta frecuencia para el GesturePlayer
         new Loop(time => {
             const currentBeats = this.transport.ticks / this.transport.PPQ;
-            
-            // El AudioEngine delega toda la lógica de reproducción al GesturePlayer.
             this.gesturePlayer.update(currentBeats, time);
+        }, "60n").start(0);
 
-        }, "60n").start(0); // Frecuencia alta para una reproducción fluida.
-
-            console.log("AudioEngine listo. El AudioContext está activo.");
+        console.log("AudioEngine listo. El AudioContext está activo.");
     }
     /**
      *
