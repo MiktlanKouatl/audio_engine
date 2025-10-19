@@ -17,8 +17,8 @@ function init() {
 
     // Módulos principales
     const audioEngine = new AudioEngine();
-    const visualScene = new VisualScene('scene-container');
     const sphereManager = new SphereManager();
+    const visualScene = new VisualScene('scene-container', sphereManager);
 
     // Conexión central: La escena visual notifica a main.js sobre las interacciones
     visualScene.onInteraction = (data) => {
@@ -35,6 +35,16 @@ function init() {
                     activeTrack.recordGesture(timeInBeats, data);
                 }
                 audioEngine.playPreviewNote(data);
+                break;
+            case 'track-param-change':
+                const { trackId, param, value } = data.payload;
+                const track = audioEngine.tracks.find(t => t.id === trackId);
+                if (track) {
+                    if (param === 'volume') {
+                        track.setVolume(value);
+                    }
+                    // En el futuro, aquí se manejarían otros parámetros como 'pan'
+                }
                 break;
             case 'fx-update':
                 break;
@@ -85,14 +95,14 @@ function init() {
                 loopLength++;
                 audioEngine.setLoopLength(loopLength);
                 visualScene.rebuildVisualizers(loopLength, 4);
-                visualScene.updateMeasuresDisplay(loopLength);
+                visualScene.globalControls.updateMeasuresDisplay(loopLength);
                 break;
             case 'measures-decrement':
                 if (loopLength > 1) {
                     loopLength--;
                     audioEngine.setLoopLength(loopLength);
                     visualScene.rebuildVisualizers(loopLength, 4);
-                    visualScene.updateMeasuresDisplay(loopLength);
+                    visualScene.globalControls.updateMeasuresDisplay(loopLength);
                 }
                 break;
             case 'metronome-toggle':
@@ -167,7 +177,7 @@ function init() {
     // Bucle principal de actualización
     function uiUpdateLoop() {
         const currentBPM = audioEngine.getBPM();
-        visualScene.updateTempoDisplay(currentBPM);
+        visualScene.globalControls.updateTempoDisplay(currentBPM);
 
         const currentMeasure = audioEngine.getCurrentMeasure();
         visualScene.setActiveMeasure(currentMeasure);
@@ -182,6 +192,12 @@ function init() {
                 const coord = audioEngine.gesturePlayer.getCurrentCoordinate(track.id);
                 let isVisible = activeTrack ? (activeTrack.id === track.id) : true;
                 visualScene.updateGhostFinger(track.id, coord, isVisible);
+            }
+
+            // --- Lógica del VU-metro ---
+            if (typeof track.getLevel === 'function') {
+                const level = track.getLevel();
+                visualScene.updateTrackVUMeter(track.id, level);
             }
         });
 

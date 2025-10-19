@@ -1,4 +1,4 @@
-import { Synth, Player, Channel, PitchShift, Filter, Time } from 'tone';
+import { Synth, Player, Channel, PitchShift, Filter, Time, Meter } from 'tone';
 
 export class Track {
     /**
@@ -14,19 +14,22 @@ export class Track {
 
         this.pitchShift = new PitchShift(0);// Efecto de cambio de tono, inicializado a 0 semitonos
         this.filter = new Filter(20000, 'lowpass'); // Un filtro pasa-bajas, abierto por defecto (20000Hz)
+        this.meter = new Meter(); // Medidor de nivel para el VU-metro
 
         this.channel = new Channel({   
                 volume: -6,
                 pan: 0,
                 mute: false
-        }).connect(masterOut); // Canal para controlar el volumen y panning de la pista
+        }).connect(this.meter).connect(masterOut); // Conectamos el canal al medidor y luego al master
 
-        // Cada pista ahora tiene un Player para el audio grabado.
-        // Creamos el Player y construimos la cadena de señal.
-        // .chain() es una forma elegante de conectar varios nodos en orden.
         this.player = new Player().chain(this.pitchShift, this.filter, this.channel);
         this.player.loop = true; // Los loops de audio se repiten por defecto.
     }
+
+    getLevel() {
+        return this.meter.getValue();
+    }
+
     /**
      * Inicia el proceso de grabación para esta pista.
      * Utiliza el RecorderModule para hacer el trabajo pesado.
@@ -41,41 +44,32 @@ export class Track {
             this.state = 'armed';
             console.log(`Pista "${this.name}" armada para grabar.`);
             
-            // Le pedimos al grabador que inicie una grabación agendada.
-            // 'await' pausa la ejecución aquí hasta que la grabación termine.
             const audioUrl = await this.recorderModule.startScheduledRecording();
             console.log(`[DEBUG] Track "${this.name}" recibió la URL del audio.`);
-            const response = await fetch(audioUrl); // Obtenemos el Blob desde la URL
-            this.audioBlob = await response.blob(); // Guardamos el Blob original
+            const response = await fetch(audioUrl);
+            this.audioBlob = await response.blob();
             
-            // Una vez que la grabación termina, cargamos el resultado.
             await this.player.load(audioUrl);
 
             const expectedDuration = Time(this.recorderModule.transport.loopEnd).toSeconds();
             const actualDuration = this.player.buffer.duration;
             const latencyCompensation = expectedDuration - actualDuration;
 
-
             console.log(`[TRACK] Duración esperada: ${expectedDuration.toFixed(2)}s, Duración real: ${actualDuration.toFixed(2)}s`);
             console.log(`[TRACK] Compensación de latencia calculada: ${latencyCompensation.toFixed(3)}s`);
 
-            
-            // ¡LA SOLUCIÓN! Le pasamos el offset al método start.
-            // El primer '0' es CUÁNDO empezar (al inicio del loop del transporte).
-            // El segundo valor es DESDE DÓNDE empezar a leer el archivo de audio.
             this.player.sync().start(0, latencyCompensation);
             console.log(`[TRACK] Player de "${this.name}" sincronizado con compensación.`);
-
 
             this.state = 'has_loop';
             console.log(`✅ Loop grabado y listo en la pista "${this.name}".`);
 
         } catch (error) {
             console.error(`Falló la grabación en la pista "${this.name}":`, error);
-            this.state = 'empty'; // Revertimos al estado inicial si hay un error.
+            this.state = 'empty';
         }
     }
-    // Método para serializar el estado de la pista.
+
     serialize() {
         if (this.state !== 'has_loop') return null;
         return {
@@ -83,10 +77,10 @@ export class Track {
             volume: this.channel.volume.value,
             pan: this.channel.pan.value,
             mute: this.channel.mute,
-            audio: this.audioBlob // Entregamos el Blob para que el SessionManager lo guarde
+            audio: this.audioBlob
         };
     }
-    // Método para cargar datos en una pista existente.
+
     async loadData(trackData) {
         this.name = trackData.name;
         this.channel.volume.value = trackData.volume;
@@ -101,6 +95,7 @@ export class Track {
             this.state = 'has_loop';
         }
     }
+
     setVolume(db) {
         if (this.channel) this.channel.volume.value = db;
     }
@@ -108,17 +103,19 @@ export class Track {
     setPan(panValue) {
         if (this.channel) this.channel.pan.value = panValue;
     }
+
     setPitch(semitones) {
         if (this.pitchShift) {
             this.pitchShift.pitch = semitones;
         }
     }
-    // Método para controlar la frecuencia del filtro.
+
     setFilterFrequency(freq) {
         if (this.filter) {
             this.filter.frequency.value = freq;
         }
     }
+
     toggleMute() {
         if (this.channel) {
             this.channel.mute = !this.channel.mute;
@@ -126,28 +123,12 @@ export class Track {
         }
         return false;
     }
-    /**
-     * Limpia y libera todos los recursos de audio utilizados por esta pista.
-     * Esencial para evitar fugas de memoria.
-     */
-    dispose() {
-        if (this.player) {
-            this.player.dispose();
-            console.log(`Player de la pista "${this.name}" liberado.`);
-        }
-        if (this.channel) {
-            this.channel.dispose();
-            console.log(`Canal de la pista "${this.name}" liberado.`);
-        }
-        if (this.pitchShift) {
-            this.pitchShift.dispose();
-            console.log(`PitchShift de la pista "${this.name}" liberado.`);
-        }
-        if (this.filter) {
-            this.filter.dispose();
-        }
 
-        // Si en el futuro añadimos efectos, también los liberaríamos aquí.
-        // ej: this.reverb.dispose();
+    dispose() {
+        if (this.player) this.player.dispose();
+        if (this.channel) this.channel.dispose();
+        if (this.pitchShift) this.pitchShift.dispose();
+        if (this.filter) this.filter.dispose();
+        if (this.meter) this.meter.dispose();
     }
 }
