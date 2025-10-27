@@ -309,13 +309,18 @@ export class AudioEngine {
     async loadSessionData(sessionData) {
         this.transport.bpm.value = sessionData.bpm;
         this.setLoopLength(sessionData.loopLength);
-        
+
         // Limpiamos las pistas existentes
         this.tracks.forEach(t => t.dispose());
         this.tracks = [];
-        
+
         for (const trackData of sessionData.tracks) {
-            const newTrack = this.createNewTrack(this.recorderModule); // Asumiendo que recorderModule está disponible
+            let newTrack;
+            if (trackData.type === 'instrument') {
+                newTrack = this.createInstrumentTrack(trackData.name);
+            } else {
+                newTrack = this.createAudioTrack(trackData.name);
+            }
             await newTrack.loadData(trackData);
         }
     }
@@ -370,10 +375,9 @@ export class AudioEngine {
         console.log("[BOUNCE] Iniciando proceso de unión...");
 
         const bounceRecorder = new Recorder();
-        const mainDestination = getDestination();
 
         tracksToBounce.forEach(track => {
-            track.channel.disconnect(mainDestination);
+            track.channel.disconnect(this.masterOut);
             track.channel.connect(bounceRecorder);
         });
 
@@ -403,7 +407,7 @@ export class AudioEngine {
                             const blob = await bounceRecorder.stop();
                             console.log(`[BOUNCE] Grabación interna finalizada.`);
 
-                            const newTrack = this.createNewTrack(this.recorderModule);
+                            const newTrack = this.createAudioTrack(`Mezcla (${tracksToBounce.length})`);
                             await newTrack.loadData({
                                 name: `Mezcla (${tracksToBounce.length})`,
                                 volume: 0, pan: 0, mute: false, audio: blob
@@ -414,7 +418,7 @@ export class AudioEngine {
 
                             bounceRecorder.dispose();
                             console.log("[BOUNCE] Proceso completado.");
-                            resolve(); // Resolvemos la promesa principal
+                            resolve(newTrack); // Resolvemos la promesa principal con la nueva pista
                         } catch (e) {
                             reject(e);
                         }

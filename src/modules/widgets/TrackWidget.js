@@ -36,6 +36,14 @@ export class TrackWidget extends THREE.Group {
         this.selectionIndicator.position.z = 0.01;
         this.add(this.selectionIndicator);
 
+        // --- Indicador de Selección para Bounce (Aro Azul) ---
+        const bounceIndicatorGeo = new THREE.RingGeometry(0.39, 0.44, 32);
+        const bounceIndicatorMat = new THREE.MeshBasicMaterial({ color: 0x0074D9, side: THREE.DoubleSide });
+        this.bounceSelectionIndicator = new THREE.Mesh(bounceIndicatorGeo, bounceIndicatorMat);
+        this.bounceSelectionIndicator.visible = false;
+        this.bounceSelectionIndicator.position.z = 0.01;
+        this.add(this.bounceSelectionIndicator);
+
         // --- Botón de Grabación (REC) ---
         const recGeo = new THREE.CircleGeometry(0.1, 16);
         this.recButton = new THREE.Mesh(recGeo, metronomeOffMaterial.clone());
@@ -45,6 +53,16 @@ export class TrackWidget extends THREE.Group {
         this.add(this.recButton);
         interactiveControls.push(this.recButton);
         this.interactiveObjects.push(this.recButton);
+
+        // --- Botón de Borrar (Delete) ---
+        const deleteGeo = new THREE.CircleGeometry(0.1, 16);
+        const deleteMat = new THREE.MeshBasicMaterial({ color: 0x8B0000, side: THREE.DoubleSide }); // DarkRed color
+        const deleteButton = new THREE.Mesh(deleteGeo, deleteMat);
+        deleteButton.name = `delete-track-${this.trackId}`;
+        deleteButton.position.set(0.45, 0, 0.02); // Position it to the side
+        this.add(deleteButton);
+        interactiveControls.push(deleteButton);
+        this.interactiveObjects.push(deleteButton);
 
         // --- Panel de Volumen ---
         this.volumePanel = new THREE.Group();
@@ -96,6 +114,10 @@ export class TrackWidget extends THREE.Group {
     setActive(isActive) {
         this.selectionIndicator.visible = isActive;
         this.volumePanel.visible = isActive;
+    }
+
+    setBounceSelected(isSelected) {
+        this.bounceSelectionIndicator.visible = isSelected;
     }
 
     setArmed(isArmed, materials) {

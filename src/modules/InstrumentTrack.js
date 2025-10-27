@@ -141,4 +141,31 @@ export class InstrumentTrack {
     getGesture() {
         return this.gesture;
     }
+
+    serialize() {
+        if (this.state !== 'has_sequence') return null;
+        return {
+            type: 'instrument',
+            name: this.name,
+            volume: this.channel.volume.value,
+            pan: this.channel.pan.value,
+            mute: this.channel.mute,
+            gesture: this.gesture
+        };
+    }
+
+    async loadData(trackData) {
+        this.name = trackData.name;
+        this.channel.volume.value = trackData.volume;
+        this.channel.pan.value = trackData.pan;
+        this.channel.mute = trackData.mute;
+        this.gesture = trackData.gesture || [];
+
+        if (this.gesture.length > 0) {
+            this.state = 'has_sequence';
+            const startTime = this.gesture[0].t;
+            const normalizedGesture = this.gesture.map(p => ({ t: p.t - startTime, c: p.c }));
+            this.gesturePlayer.playGesture(this, normalizedGesture, 0);
+        }
+    }
 }

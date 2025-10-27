@@ -9,9 +9,16 @@ export class GlobalControlsWidget extends THREE.Group {
 
         this.audioTrackButton = null;
         this.instrumentTrackButton = null;
+        this.saveSessionButton = null;
+        this.loadSessionButton = null;
+        this.bounceButton = null;
+        this.confirmBounceButton = null;
+        this.cancelBounceButton = null;
         this.buttonMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.0 });
 
         this._createNewTrackButtons();
+        this._createSessionButtons();
+        this._createBounceButtons();
 
         // --- Widget de Tempo ---
         this.tempo = new THREE.Group();
@@ -121,6 +128,21 @@ export class GlobalControlsWidget extends THREE.Group {
         if (this.instrumentTrackButton) {
             this.instrumentTrackButton.position.set(right - 1, top - 0.5, 0);
         }
+        if (this.saveSessionButton) {
+            this.saveSessionButton.position.set(right - 1, top - 1.0, 0);
+        }
+        if (this.loadSessionButton) {
+            this.loadSessionButton.position.set(right - 1, top - 1.5, 0);
+        }
+        if (this.bounceButton) {
+            this.bounceButton.position.set(right - 1, top - 2.0, 0);
+        }
+        if (this.confirmBounceButton) {
+            this.confirmBounceButton.position.set(right - 1, top - 2.5, 0);
+        }
+        if (this.cancelBounceButton) {
+            this.cancelBounceButton.position.set(right - 1, top - 3.0, 0);
+        }
     }
 
     updateTempoDisplay(bpm) {
@@ -178,6 +200,117 @@ export class GlobalControlsWidget extends THREE.Group {
             instrumentHitbox.name = 'create-instrument-track';
             this.instrumentTrackButton.add(instrumentHitbox);
             this.interactiveControls.push(instrumentHitbox);
+        });
+    }
+
+    _createSessionButtons() {
+        this.saveSessionButton = new THREE.Group();
+        const saveText = new Text();
+        saveText.text = '[GUARDAR]';
+        saveText.font = '../GoogleSansCode-VariableFont_wght.ttf';
+        saveText.fontSize = 0.2;
+        saveText.color = 0xFFFFFF;
+        saveText.anchorX = 'center';
+        saveText.anchorY = 'middle';
+        this.saveSessionButton.add(saveText);
+        this.add(this.saveSessionButton);
+
+        saveText.sync(() => {
+            const bbox = saveText.geometry.boundingBox;
+            const width = bbox.max.x - bbox.min.x;
+            const height = bbox.max.y - bbox.min.y;
+            const saveHitbox = new THREE.Mesh(new THREE.PlaneGeometry(width, height), this.buttonMaterial);
+            saveHitbox.name = 'save-session';
+            this.saveSessionButton.add(saveHitbox);
+            this.interactiveControls.push(saveHitbox);
+        });
+
+        this.loadSessionButton = new THREE.Group();
+        const loadText = new Text();
+        loadText.text = '[CARGAR]';
+        loadText.font = '../GoogleSansCode-VariableFont_wght.ttf';
+        loadText.fontSize = 0.2;
+        loadText.color = 0xFFFFFF;
+        loadText.anchorX = 'center';
+        loadText.anchorY = 'middle';
+        this.loadSessionButton.add(loadText);
+        this.add(this.loadSessionButton);
+
+        loadText.sync(() => {
+            const bbox = loadText.geometry.boundingBox;
+            const width = bbox.max.x - bbox.min.x;
+            const height = bbox.max.y - bbox.min.y;
+            const loadHitbox = new THREE.Mesh(new THREE.PlaneGeometry(width, height), this.buttonMaterial);
+            loadHitbox.name = 'load-session';
+            this.loadSessionButton.add(loadHitbox);
+            this.interactiveControls.push(loadHitbox);
+        });
+    }
+
+    _createBounceButtons() {
+        this.bounceButton = new THREE.Group();
+        const bounceText = new Text();
+        bounceText.text = '[UNIR]';
+        bounceText.font = '../GoogleSansCode-VariableFont_wght.ttf';
+        bounceText.fontSize = 0.2;
+        bounceText.color = 0xFFFFFF;
+        bounceText.anchorX = 'center';
+        bounceText.anchorY = 'middle';
+        this.bounceButton.add(bounceText);
+        this.add(this.bounceButton);
+
+        bounceText.sync(() => {
+            const bbox = bounceText.geometry.boundingBox;
+            const width = bbox.max.x - bbox.min.x;
+            const height = bbox.max.y - bbox.min.y;
+            const bounceHitbox = new THREE.Mesh(new THREE.PlaneGeometry(width, height), this.buttonMaterial);
+            bounceHitbox.name = 'bounce-tracks';
+            this.bounceButton.add(bounceHitbox);
+            this.interactiveControls.push(bounceHitbox);
+        });
+
+        this.confirmBounceButton = new THREE.Group();
+        const confirmText = new Text();
+        confirmText.text = '[OK]';
+        confirmText.font = '../GoogleSansCode-VariableFont_wght.ttf';
+        confirmText.fontSize = 0.2;
+        confirmText.color = 0x01FF70;
+        confirmText.anchorX = 'center';
+        confirmText.anchorY = 'middle';
+        this.confirmBounceButton.add(confirmText);
+        this.add(this.confirmBounceButton);
+        this.confirmBounceButton.visible = false;
+
+        confirmText.sync(() => {
+            const bbox = confirmText.geometry.boundingBox;
+            const width = bbox.max.x - bbox.min.x;
+            const height = bbox.max.y - bbox.min.y;
+            const confirmHitbox = new THREE.Mesh(new THREE.PlaneGeometry(width, height), this.buttonMaterial);
+            confirmHitbox.name = 'confirm-bounce';
+            this.confirmBounceButton.add(confirmHitbox);
+            this.interactiveControls.push(confirmHitbox);
+        });
+
+        this.cancelBounceButton = new THREE.Group();
+        const cancelText = new Text();
+        cancelText.text = '[X]';
+        cancelText.font = '../GoogleSansCode-VariableFont_wght.ttf';
+        cancelText.fontSize = 0.2;
+        cancelText.color = 0xFF4136;
+        cancelText.anchorX = 'center';
+        cancelText.anchorY = 'middle';
+        this.cancelBounceButton.add(cancelText);
+        this.add(this.cancelBounceButton);
+        this.cancelBounceButton.visible = false;
+
+        cancelText.sync(() => {
+            const bbox = cancelText.geometry.boundingBox;
+            const width = bbox.max.x - bbox.min.x;
+            const height = bbox.max.y - bbox.min.y;
+            const cancelHitbox = new THREE.Mesh(new THREE.PlaneGeometry(width, height), this.buttonMaterial);
+            cancelHitbox.name = 'cancel-bounce';
+            this.cancelBounceButton.add(cancelHitbox);
+            this.interactiveControls.push(cancelHitbox);
         });
     }
 }

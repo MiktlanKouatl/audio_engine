@@ -73,6 +73,7 @@ export class Track {
     serialize() {
         if (this.state !== 'has_loop') return null;
         return {
+            type: 'audio',
             name: this.name,
             volume: this.channel.volume.value,
             pan: this.channel.pan.value,

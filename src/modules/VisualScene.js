@@ -5,8 +5,8 @@ import { TrackWidget } from './widgets/TrackWidget.js';
 import { GlobalControlsWidget } from './widgets/GlobalControlsWidget.js';
 import { MainSphere } from './MainSphere.js';
 import { SequencerVisualizerWidget } from './widgets/SequencerVisualizerWidget.js';
-// import { InstrumentWidget } from './widgets/InstrumentWidget.js';
 import { DualArcInstrumentWidget } from './widgets/DualArcInstrumentWidget.js';
+import { SessionListWidget } from './widgets/SessionListWidget.js';
 
 import { pointToMusicalData } from './Notation.js';
 
@@ -31,6 +31,7 @@ export class VisualScene {
         this.globalControls = null;
         this.sequencerVisualizer = null;
         this.instrumentWidget = null;
+        this.sessionListWidget = null;
 
         // Parámetros de Posicionamiento de Pistas
         this.trackUIOptions = {
@@ -49,6 +50,8 @@ export class VisualScene {
         this.trackSlots = {};
         this.trackUIComponents = {};
         this.ghostFingers = new Map();
+        this.isBounceMode = false;
+        this.bounceSelection = [];
         
         // Interacción
         this.raycaster = new THREE.Raycaster();
@@ -62,8 +65,9 @@ export class VisualScene {
         // Estados de Arrastre
         this.isDraggingSphere = false;
         this.isDraggingVolume = false;
-        this.draggedTrackId = null;
-        this.draggedTrack = null; // Nuevo: para el arrastre de tracks
+        this.isDraggingTrack = false;
+        this.dragStart = { x: 0, y: 0, time: 0 };
+        this.draggedTrack = null; // Objeto para la información de arrastre
         this.animations = []; // Nuevo: para animaciones de snap
         this.dragProxySphere = null; // Nuevo: para el raycast al arrastrar
         
@@ -109,16 +113,17 @@ export class VisualScene {
         this.globalControlsContainer.add(this.sequencerVisualizer);
         this.rebuildVisualizers(4, 4);
 
-        // this.instrumentWidget = new InstrumentWidget();
         this.instrumentWidget = new DualArcInstrumentWidget();
         this.uiContainer.add(this.instrumentWidget);
 
-        // Esfera invisible para raycasting al arrastrar tracks
+        this.sessionListWidget = new SessionListWidget(this.interactiveControls);
+        this.uiContainer.add(this.sessionListWidget);
+
         this.dragProxySphere = new THREE.Mesh(
             new THREE.SphereGeometry(3.7, 32, 32),
             new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide })
         );
-        this.scene.add(this.dragProxySphere); // Corregido: Añadido a la escena principal
+        this.scene.add(this.dragProxySphere);
 
         this.container.addEventListener('pointerdown', this._onPointerDown.bind(this));
         this.container.addEventListener('pointerup', this._onPointerUp.bind(this));
@@ -131,6 +136,36 @@ export class VisualScene {
         this._animate();
     }
 
+    enterBounceMode() {
+        this.isBounceMode = true;
+        this.globalControls.bounceButton.visible = false;
+        this.globalControls.confirmBounceButton.visible = true;
+        this.globalControls.cancelBounceButton.visible = true;
+    }
+
+    exitBounceMode() {
+        this.isBounceMode = false;
+        this.globalControls.bounceButton.visible = true;
+        this.globalControls.confirmBounceButton.visible = false;
+        this.globalControls.cancelBounceButton.visible = false;
+        this.bounceSelection.forEach(trackId => {
+            const widget = this.trackUIComponents[trackId];
+            if (widget) {
+                widget.setBounceSelected(false);
+            }
+        });
+        this.bounceSelection = [];
+    }
+
+    showSessionList(sessions) {
+        this.sessionListWidget.populate(sessions);
+    }
+
+    hideSessionList() {
+        this.sessionListWidget.clear();
+        this.sessionListWidget.visible = false;
+    }
+
     rebuildVisualizers(measureCount, timeSignature) {
         if (this.sequencerVisualizer) {
             this.sequencerVisualizer.rebuildVisualizers(measureCount, timeSignature);
@@ -141,14 +176,7 @@ export class VisualScene {
         this.pointer.x = (event.clientX / this.container.clientWidth) * 2 - 1;
         this.pointer.y = -(event.clientY / this.container.clientHeight) * 2 + 1;
         this.raycaster.setFromCamera(this.pointer, this.camera);
-    
-        const controlIntersects = this.raycaster.intersectObjects(this.interactiveControls);
-        if (controlIntersects.length > 0) {
-            if (this.onInteraction) this.onInteraction({ type: 'ui-click', element: controlIntersects[0].object.name });
-            return;
-        }
 
-        // Lógica para el nuevo DualArcInstrumentWidget
         if (this.instrumentWidget instanceof DualArcInstrumentWidget) {
             const hitboxes = [this.instrumentWidget.leftHitbox, this.instrumentWidget.rightHitbox];
             const intersects = this.raycaster.intersectObjects(hitboxes);
@@ -164,30 +192,27 @@ export class VisualScene {
                 const localPoint = this.instrumentWidget.worldToLocal(point.clone());
                 const distanceFromCenter = Math.sqrt(localPoint.x * localPoint.x + localPoint.y * localPoint.y);
 
-                // NO normalizar el ángulo globalmente. Se trata diferente para cada arco.
                 let angle = Math.atan2(localPoint.y, localPoint.x);
 
                 const radiusRange = this.instrumentWidget.outerRadius - this.instrumentWidget.innerRadius;
                 let velocity = (distanceFromCenter - this.instrumentWidget.innerRadius) / radiusRange;
-                velocity = Math.max(0, Math.min(1, velocity)); // Clamp velocity
+                velocity = Math.max(0, Math.min(1, velocity));
 
                 let globalArcPosition = -1;
 
                 if (hitObject.name === 'left_arc_hitbox') {
-                    if (angle < 0) angle += 2 * Math.PI; // Normalizar para el arco izquierdo
+                    if (angle < 0) angle += 2 * Math.PI;
                     const params = this.instrumentWidget.leftArcParams;
                     const arcRange = params.endAngle - params.startAngle;
                     const arcPosition = (angle - params.startAngle) / arcRange;
-                    globalArcPosition = arcPosition * 0.5; // Mapea a 0.0 - 0.5
+                    globalArcPosition = arcPosition * 0.5;
                 } else if (hitObject.name === 'right_arc_hitbox') {
                     const params = this.instrumentWidget.rightArcParams;
                     const arcRange = params.endAngle - params.startAngle;
-                    // El ángulo de atan2 ya está en el rango correcto para este arco (-PI a PI)
                     const arcPosition = (angle - params.startAngle) / arcRange;
-                    globalArcPosition = 0.5 + (arcPosition * 0.5); // Mapea a 0.5 - 1.0
+                    globalArcPosition = 0.5 + (arcPosition * 0.5);
                 }
 
-                // Asegurarse de que las coordenadas siempre estén en el rango 0-1
                 globalArcPosition = Math.max(0, Math.min(1, globalArcPosition));
 
                 if (this.onInteraction && globalArcPosition !== -1) {
@@ -197,7 +222,6 @@ export class VisualScene {
             } else {
                 this.interactionLight.intensity = 0;
             }
-            return;
         }
     }
     
@@ -225,14 +249,27 @@ export class VisualScene {
         console.log(`TrackWidget (ID: ${trackData.id}) creado y añadido a la escena.`);
     }
 
+    deleteTrackUI(trackId) {
+        const widget = this.trackUIComponents[trackId];
+        if (widget) {
+            widget.dispose(this.interactiveControls);
+            this.mainSphere.remove(widget);
+            delete this.trackUIComponents[trackId];
+        }
+
+        const ghostFinger = this.ghostFingers.get(trackId);
+        if (ghostFinger) {
+            this.instrumentWidget.remove(ghostFinger);
+            this.ghostFingers.delete(trackId);
+        }
+    }
+
     updateGhostFinger(trackId, coord, isVisible) {
         const ghostFinger = this.ghostFingers.get(trackId);
         if (!ghostFinger) return;
 
         if (isVisible) {
             ghostFinger.update(coord, this.instrumentWidget);
-        } else {
-            ghostFinger.hide();
         }
     }
 
@@ -291,7 +328,6 @@ export class VisualScene {
     }
 
     updateTrackVUMeter(trackId, level) {
-        // Desactivado temporalmente para separar el control del visualizador
         return;
     }
 
@@ -338,7 +374,7 @@ export class VisualScene {
 
                 const rawValue = (localPoint.y - box.min.y) / height;
                 const value = Math.max(0, Math.min(1, rawValue));
-                const db = (value * 54) - 48; // -48dB to +6dB range
+                const db = (value * 54) - 48;
 
                 if (this.onInteraction) {
                     this.onInteraction({ type: 'track-param-change', payload: { trackId: this.draggedTrackId, param: 'volume', value: db } });
@@ -352,11 +388,14 @@ export class VisualScene {
                 }
             }
         } catch (err) {
-            // Silently ignore errors to avoid console output per request
         }
     }
 
     _onPointerDown(event) {
+        this.dragStart.x = event.clientX;
+        this.dragStart.y = event.clientY;
+        this.dragStart.time = Date.now();
+
         this.pointer.x = (event.clientX / this.container.clientWidth) * 2 - 1;
         this.pointer.y = -(event.clientY / this.container.clientHeight) * 2 + 1;
         this.raycaster.setFromCamera(this.pointer, this.camera);
@@ -365,6 +404,23 @@ export class VisualScene {
         if (controlIntersects.length > 0) {
             const intersectedObject = controlIntersects[0].object;
             const name = intersectedObject.name;
+
+            if (name.startsWith('load-session-name-')) {
+                const sessionName = name.substring('load-session-name-'.length);
+                if (this.onInteraction) {
+                    this.onInteraction({ type: 'load-session-by-name', payload: { sessionName } });
+                }
+                this.hideSessionList();
+                return;
+            }
+
+            if (name.startsWith('delete-track-')) {
+                const trackId = parseInt(name.split('-').pop());
+                if (this.onInteraction) {
+                    this.onInteraction({ type: 'track-delete', payload: { trackId } });
+                }
+                return;
+            }
 
             if (name.startsWith('volume-slider-')) {
                 this.isDraggingVolume = true;
@@ -376,6 +432,19 @@ export class VisualScene {
             if (name.startsWith('track-select-')) {
                 const trackId = parseInt(name.split('-').pop());
                 const widget = this.trackUIComponents[trackId];
+
+                if (this.isBounceMode) {
+                    const index = this.bounceSelection.indexOf(trackId);
+                    if (index > -1) {
+                        this.bounceSelection.splice(index, 1);
+                        widget.setBounceSelected(false);
+                    } else {
+                        this.bounceSelection.push(trackId);
+                        widget.setBounceSelected(true);
+                    }
+                    return;
+                }
+
                 const intersectionPoint = controlIntersects[0].point;
 
                 if (widget) {
@@ -386,20 +455,18 @@ export class VisualScene {
                     this.draggedTrack = {
                         widget: widget,
                         id: trackId,
-                        originalSlotIndex: this.sphereManager.freeSlotByTrackId(trackId),
+                        name: name, // Store the name for the click event
+                        originalSlotIndex: this.sphereManager.tracks.get(trackId),
                         offset: offset
                     };
-                    this.isDraggingSphere = false; // Desactivar rotación de la esfera principal
-                    this.isInteracting = false; // Desactivar interacción con instrumento
-                    return;
                 }
+                return;
             }
             
             if (this.onInteraction) this.onInteraction({ type: 'ui-click', element: name });
             return;
         }
 
-        // Lógica para el nuevo DualArcInstrumentWidget
         if (this.instrumentWidget instanceof DualArcInstrumentWidget) {
             const hitboxes = [this.instrumentWidget.leftHitbox, this.instrumentWidget.rightHitbox];
             const intersects = this.raycaster.intersectObjects(hitboxes);
@@ -412,7 +479,7 @@ export class VisualScene {
         }
 
         const sphereIntersects = this.raycaster.intersectObject(this.mainSphere);
-        if (sphereIntersects.length > 0 && !this.draggedTrack) { // Solo rotar si no estamos arrastrando un track
+        if (sphereIntersects.length > 0 && !this.draggedTrack) {
             this.isDraggingSphere = true;
             this.mainSphere.onPointerDown({ x: event.clientX, y: event.clientY });
             return;
@@ -420,7 +487,7 @@ export class VisualScene {
     }
 
     _onPointerUp(event) {
-        if (this.draggedTrack) {
+        if (this.isDraggingTrack) {
             const dropPosition = this.draggedTrack.widget.position;
             const targetPosition = this.sphereManager.occupyNearestEmptySlot(
                 dropPosition,
@@ -435,13 +502,16 @@ export class VisualScene {
                     alpha: 0.1
                 });
             }
-            this.draggedTrack = null;
+        } else if (this.draggedTrack) {
+            // This is a click, not a drag
+            if (this.onInteraction) {
+                this.onInteraction({ type: 'ui-click', element: this.draggedTrack.name });
+            }
         }
 
-        if (this.isDraggingSphere) {
-            this.isDraggingSphere = false;
-            this.mainSphere.onPointerUp();
-        }
+        this.draggedTrack = null;
+        this.isDraggingTrack = false;
+        this.isDraggingSphere = false;
         this.isInteracting = false;
         this.isDraggingVolume = false;
         this.draggedTrackId = null;
@@ -451,7 +521,15 @@ export class VisualScene {
     }
 
     _onPointerMove(event) {
-        if (this.draggedTrack) {
+        if (this.draggedTrack && !this.isDraggingTrack) {
+            const dx = event.clientX - this.dragStart.x;
+            const dy = event.clientY - this.dragStart.y;
+            if (Math.sqrt(dx * dx + dy * dy) > 5) { // Drag threshold
+                this.isDraggingTrack = true;
+            }
+        }
+
+        if (this.isDraggingTrack) {
             this.pointer.x = (event.clientX / this.container.clientWidth) * 2 - 1;
             this.pointer.y = -(event.clientY / this.container.clientHeight) * 2 + 1;
             this.raycaster.setFromCamera(this.pointer, this.camera);
@@ -480,7 +558,6 @@ export class VisualScene {
     }
     
     _animate() {
-        // Procesar animaciones de snap
         for (let i = this.animations.length - 1; i >= 0; i--) {
             const anim = this.animations[i];
             anim.object.position.lerp(anim.target, anim.alpha);
