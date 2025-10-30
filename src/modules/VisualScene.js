@@ -24,6 +24,8 @@ export class VisualScene {
         this.camera = null;
         this.renderer = null;
         this.mainSphere = null;
+        this.sphereAndTracksContainer = null; // Contenedor para esfera y tracks
+        this.targetQuaternion = new THREE.Quaternion(); // Quaternion objetivo para la rotación
 
         // Contenedores y Widgets
         this.uiContainer = null;
@@ -67,6 +69,7 @@ export class VisualScene {
         this.isDraggingVolume = false;
         this.isDraggingTrack = false;
         this.dragStart = { x: 0, y: 0, time: 0 };
+        this.previousPointerPosition = { x: 0, y: 0 }; // Para arrastrar la esfera
         this.draggedTrack = null; // Objeto para la información de arrastre
         this.animations = []; // Nuevo: para animaciones de snap
         this.dragProxySphere = null; // Nuevo: para el raycast al arrastrar
@@ -130,8 +133,11 @@ export class VisualScene {
         this.container.addEventListener('pointermove', this._onPointerMove.bind(this));
         window.addEventListener('resize', this._onWindowResize.bind(this), false);
         
+        this.sphereAndTracksContainer = new THREE.Object3D();
+        this.scene.add(this.sphereAndTracksContainer);
+
         this.mainSphere = new MainSphere();
-        this.scene.add(this.mainSphere);
+        this.sphereAndTracksContainer.add(this.mainSphere);
 
         this._animate();
     }
@@ -216,7 +222,7 @@ export class VisualScene {
                 globalArcPosition = Math.max(0, Math.min(1, globalArcPosition));
 
                 if (this.onInteraction && globalArcPosition !== -1) {
-                    this.onInteraction({ type: 'disc-drag', coords: { x: globalArcPosition, y: velocity }, active: true });
+                    // This part will be removed or refactored
                 }
 
             } else {
@@ -234,8 +240,8 @@ export class VisualScene {
     
         const newWidget = new TrackWidget(trackData, this.interactiveControls, materials);
     
-        if (this.mainSphere) {
-            this.mainSphere.add(newWidget);
+        if (this.sphereAndTracksContainer) {
+            this.sphereAndTracksContainer.add(newWidget);
         }
     
         this.trackUIComponents[trackData.id] = newWidget;
@@ -253,7 +259,7 @@ export class VisualScene {
         const widget = this.trackUIComponents[trackId];
         if (widget) {
             widget.dispose(this.interactiveControls);
-            this.mainSphere.remove(widget);
+            this.sphereAndTracksContainer.remove(widget);
             delete this.trackUIComponents[trackId];
         }
 
@@ -283,12 +289,34 @@ export class VisualScene {
         }
     }
 
+    updateTrackModeDisplay(trackId, newMode) {
+        const widget = this.trackUIComponents[trackId];
+        if (widget) {
+            widget.updateModeDisplay(newMode);
+        }
+    }
+
     setActiveTrackUI(activeTrackId) {
         for (const id in this.trackUIComponents) {
             const widget = this.trackUIComponents[id];
             if (widget) {
                 widget.setActive(parseInt(id) === activeTrackId);
             }
+        }
+    }
+
+    updateMainSpherePolePosition(position) {
+        if (this.mainSphere) {
+            // The sphere's 'up' vector, in its un-rotated state, is (0, 1, 0).
+            const up = new THREE.Vector3(0, 1, 0);
+    
+            // The track's position is already in the correct local coordinate space
+            // relative to the sphere's parent. We just need to normalize it to get a direction.
+            const targetDirection = position.clone().normalize();
+    
+            // This quaternion now represents the desired LOCAL rotation of the sphere
+            // to make its 'up' vector point towards the target direction.
+            this.targetQuaternion.setFromUnitVectors(up, targetDirection);
         }
     }
 
@@ -459,6 +487,7 @@ export class VisualScene {
                         originalSlotIndex: this.sphereManager.tracks.get(trackId),
                         offset: offset
                     };
+                    this.sphereManager.freeSlotByTrackId(trackId); // Free the original slot when dragging starts
                 }
                 return;
             }
@@ -472,16 +501,53 @@ export class VisualScene {
             const intersects = this.raycaster.intersectObjects(hitboxes);
 
             if (intersects.length > 0) {
-                 this.isInteracting = true; 
-                this._handleInteraction(event);
+                const intersection = intersects[0];
+                const point = intersection.point;
+                const hitObject = intersection.object;
+
+                this.interactionLight.position.copy(point).y += 0.5;
+                this.interactionLight.intensity = 40;
+
+                const localPoint = this.instrumentWidget.worldToLocal(point.clone());
+                const distanceFromCenter = Math.sqrt(localPoint.x * localPoint.x + localPoint.y * localPoint.y);
+
+                let angle = Math.atan2(localPoint.y, localPoint.x);
+
+                const radiusRange = this.instrumentWidget.outerRadius - this.instrumentWidget.innerRadius;
+                let velocity = (distanceFromCenter - this.instrumentWidget.innerRadius) / radiusRange;
+                velocity = Math.max(0, Math.min(1, velocity));
+
+                let globalArcPosition = -1;
+
+                if (hitObject.name === 'left_arc_hitbox') {
+                    if (angle < 0) angle += 2 * Math.PI;
+                    const params = this.instrumentWidget.leftArcParams;
+                    const arcRange = params.endAngle - params.startAngle;
+                    const arcPosition = (angle - params.startAngle) / arcRange;
+                    globalArcPosition = arcPosition * 0.5;
+                } else if (hitObject.name === 'right_arc_hitbox') {
+                    const params = this.instrumentWidget.rightArcParams;
+                    const arcRange = params.endAngle - params.startAngle;
+                    const arcPosition = (angle - params.startAngle) / arcRange;
+                    globalArcPosition = 0.5 + (arcPosition * 0.5);
+                }
+
+                globalArcPosition = Math.max(0, Math.min(1, globalArcPosition));
+
+                if (this.onInteraction && globalArcPosition !== -1) {
+                    this.onInteraction({ type: 'disc-start-interaction', coords: { x: globalArcPosition, y: velocity } });
+                    this.isInteracting = true; // Set flag that an instrument interaction has started
+                }
                 return;
+            } else {
+                this.interactionLight.intensity = 0;
             }
         }
 
         const sphereIntersects = this.raycaster.intersectObject(this.mainSphere);
         if (sphereIntersects.length > 0 && !this.draggedTrack) {
             this.isDraggingSphere = true;
-            this.mainSphere.onPointerDown({ x: event.clientX, y: event.clientY });
+            this.previousPointerPosition = { x: event.clientX, y: event.clientY };
             return;
         }
     }
@@ -512,12 +578,20 @@ export class VisualScene {
         this.draggedTrack = null;
         this.isDraggingTrack = false;
         this.isDraggingSphere = false;
-        this.isInteracting = false;
+        // Check if an instrument interaction was active
+        if (this.isInteracting) {
+            if (this.onInteraction) {
+                this.onInteraction({ type: 'disc-end-interaction' });
+            }
+            this.isInteracting = false;
+        }
         this.isDraggingVolume = false;
         this.draggedTrackId = null;
         
         this.interactionLight.intensity = 0;
-        if (this.onInteraction) this.onInteraction({ type: 'disc-drag', active: false });
+        if (this.isInteracting && this.onInteraction) {
+            this.onInteraction({ type: 'disc-end-interaction' });
+        }
     }
 
     _onPointerMove(event) {
@@ -537,7 +611,7 @@ export class VisualScene {
             const intersects = this.raycaster.intersectObject(this.dragProxySphere);
             if (intersects.length > 0) {
                 const newWorldPosition = intersects[0].point.add(this.draggedTrack.offset);
-                const newLocalPosition = this.mainSphere.worldToLocal(newWorldPosition.clone());
+                const newLocalPosition = this.sphereAndTracksContainer.worldToLocal(newWorldPosition.clone());
                 
                 this.draggedTrack.widget.position.copy(newLocalPosition);
                 this.draggedTrack.widget.lookAt(0, 0, 0);
@@ -551,9 +625,72 @@ export class VisualScene {
         }
 
         if (this.isDraggingSphere) {
-            this.mainSphere.onPointerMove({ x: event.clientX, y: event.clientY });
+            const deltaX = event.clientX - this.previousPointerPosition.x;
+            const deltaY = event.clientY - this.previousPointerPosition.y;
+    
+            if (this.sphereAndTracksContainer) {
+                // Get camera's world-aligned up and right vectors
+                const cameraWorldUp = new THREE.Vector3(0, 1, 0).transformDirection(this.camera.matrixWorld);
+                const cameraWorldRight = new THREE.Vector3(1, 0, 0).transformDirection(this.camera.matrixWorld);
+
+                // Rotate around camera's world up for horizontal movement
+                const quatY = new THREE.Quaternion().setFromAxisAngle(cameraWorldUp, deltaX * 0.005); // Corrected direction
+                const quatX = new THREE.Quaternion().setFromAxisAngle(cameraWorldRight, deltaY * 0.005); // Corrected direction
+
+                this.sphereAndTracksContainer.quaternion.premultiply(quatY);
+                this.sphereAndTracksContainer.quaternion.premultiply(quatX);
+            }
+    
+            this.previousPointerPosition = { x: event.clientX, y: event.clientY };
         } else if (this.isInteracting) {
-            this._handleInteraction(event);
+            // Instrument arc interaction is active, send update event
+            this.pointer.x = (event.clientX / this.container.clientWidth) * 2 - 1;
+            this.pointer.y = -(event.clientY / this.container.clientHeight) * 2 + 1;
+            this.raycaster.setFromCamera(this.pointer, this.camera);
+
+            const hitboxes = [this.instrumentWidget.leftHitbox, this.instrumentWidget.rightHitbox];
+            const intersects = this.raycaster.intersectObjects(hitboxes);
+
+            if (intersects.length > 0) {
+                const intersection = intersects[0];
+                const point = intersection.point;
+                const hitObject = intersection.object;
+
+                this.interactionLight.position.copy(point).y += 0.5;
+                this.interactionLight.intensity = 40;
+
+                const localPoint = this.instrumentWidget.worldToLocal(point.clone());
+                const distanceFromCenter = Math.sqrt(localPoint.x * localPoint.x + localPoint.y * localPoint.y);
+
+                let angle = Math.atan2(localPoint.y, localPoint.x);
+
+                const radiusRange = this.instrumentWidget.outerRadius - this.instrumentWidget.innerRadius;
+                let velocity = (distanceFromCenter - this.instrumentWidget.innerRadius) / radiusRange;
+                velocity = Math.max(0, Math.min(1, velocity));
+
+                let globalArcPosition = -1;
+
+                if (hitObject.name === 'left_arc_hitbox') {
+                    if (angle < 0) angle += 2 * Math.PI;
+                    const params = this.instrumentWidget.leftArcParams;
+                    const arcRange = params.endAngle - params.startAngle;
+                    const arcPosition = (angle - params.startAngle) / arcRange;
+                    globalArcPosition = arcPosition * 0.5;
+                } else if (hitObject.name === 'right_arc_hitbox') {
+                    const params = this.instrumentWidget.rightArcParams;
+                    const arcRange = params.endAngle - params.startAngle;
+                    const arcPosition = (angle - params.startAngle) / arcRange;
+                    globalArcPosition = 0.5 + (arcPosition * 0.5);
+                }
+
+                globalArcPosition = Math.max(0, Math.min(1, globalArcPosition));
+
+                if (this.onInteraction && globalArcPosition !== -1) {
+                    this.onInteraction({ type: 'disc-update-interaction', coords: { x: globalArcPosition, y: velocity } });
+                }
+            } else {
+                this.interactionLight.intensity = 0;
+            }
         }
     }
     
@@ -571,7 +708,10 @@ export class VisualScene {
         requestAnimationFrame(this._animate.bind(this));
         if (this.mainSphere) {
             this.mainSphere.update();
+            // Interpolar suavemente la rotación local de la esfera hacia el objetivo
+            this.mainSphere.quaternion.slerp(this.targetQuaternion, 0.05);
         }
+
         this.renderer.render(this.scene, this.camera);
     }
 }

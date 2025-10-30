@@ -1,47 +1,83 @@
-// src/modules/InstrumentTrack.js
-import { FMSynth, Volume, getTransport, Time } from 'tone';
+import { Volume, getTransport, Time } from 'tone';
+import { SOUND_BANK } from './SoundBank.js';
 import { pointToMusicalData } from './Notation.js';
 
 export class InstrumentTrack {
-    constructor(id, name, masterOut, gesturePlayer) {
+    constructor(id, name, masterOut, gesturePlayer, initialMode = 'melodic') {
         this.id = id;
         this.name = name;
         this.state = 'empty'; // 'empty', 'armed', 'recording', 'has_sequence'
         this.transport = getTransport();
         this.gesturePlayer = gesturePlayer;
+        this.masterOut = masterOut;
 
-        this.synth = new FMSynth({
-            harmonicity: 2,
-            modulationIndex: 10,
-            envelope: { attack: 0.01, decay: 0.2, release: 0.2 }
-        });
-        
+        this.mode = null;
+        this.synth = null;
+        this.synthMapFunction = null;
+        this.synthTriggerAttackFunction = null;
+        this.synthTriggerReleaseFunction = null;
+        this.synthPlayPreviewFunction = null;
+
         this.channel = new Volume(0).connect(masterOut);
-        this.synth.connect(this.channel);
-
         this.gesture = [];
+
+        this.setMode(initialMode);
+    }
+
+    setMode(newMode) {
+        if (!SOUND_BANK[newMode]) {
+            console.error(`Mode ${newMode} not found in SOUND_BANK.`);
+            return;
+        }
+
+        if (this.synth) {
+            this.synth.disconnect();
+            this.synth.dispose();
+        }
+
+        const modeConfig = SOUND_BANK[newMode];
+        this.synth = modeConfig.synth(this.channel);
+        this.synthMapFunction = modeConfig.map;
+        this.synthTriggerAttackFunction = modeConfig.triggerAttack;
+        this.synthTriggerReleaseFunction = modeConfig.triggerRelease;
+        this.synthPlayPreviewFunction = modeConfig.playPreview;
+        this.mode = newMode;
+        console.log(`Instrument mode for ${this.name} set to ${newMode}`);
+    }
+
+    handleInteraction(data) {
+        const { type, coords } = data;
+        if (!this.synth) return;
+
+        switch (type) {
+            case 'disc-start-interaction':
+                if (this.synthMapFunction) {
+                    this.synthMapFunction(this.synth, coords.x, coords.y);
+                }
+                if (this.synthPlayPreviewFunction) {
+                    this.synthPlayPreviewFunction(this.synth, coords.x, coords.y);
+                } else if (this.synthTriggerAttackFunction) {
+                    this.synthTriggerAttackFunction(this.synth);
+                }
+                break;
+            case 'disc-update-interaction':
+                if (this.synthMapFunction) {
+                    this.synthMapFunction(this.synth, coords.x, coords.y);
+                }
+                break;
+            case 'disc-end-interaction':
+                if (this.synthTriggerReleaseFunction) {
+                    this.synthTriggerReleaseFunction(this.synth);
+                }
+                break;
+        }
     }
 
     playAt(coord, time) {
-        if (!this.synth || !coord) return;
-
-        // Traducimos la coordenada a datos musicales
-        const musicalData = pointToMusicalData(coord.x, coord.y);
-        if (!musicalData) return;
-
-        const volumeInDb = -30 + musicalData.velocity * 30;
-        const rampTime = 1 / 60; // Un deslizamiento suave entre frames
-
-        // Simplemente actualizamos los parámetros del sinte.
-        // Asumimos que ya está sonando.
-        this.synth.frequency.rampTo(musicalData.freq, rampTime, time);
-        this.synth.volume.rampTo(volumeInDb, rampTime, time);
+        if (!this.synth || !coord || !this.synthMapFunction) return;
+        this.synthMapFunction(this.synth, coord.x, coord.y, time);
     }
 
-    /**
-     * Arma la pista y espera activamente el inicio del próximo loop para grabar.
-     * Este método ahora imita la lógica robusta de RecorderModule.js.
-     */
     async armRecord() {
         if (this.state === 'armed' || this.state === 'recording') {
             console.warn(`La pista "${this.name}" ya está en proceso de grabación.`);
@@ -72,14 +108,12 @@ export class InstrumentTrack {
         });
     }
 
-    /**
-     * Inicia la grabación y crea un observador para detenerla al final del loop.
-     * @param {Function} resolve - La función para resolver la promesa de armRecord.
-     */
     startRecordingSequence(resolve) {
         this.state = 'recording';
         console.log(`¡GRABANDO en pista "${this.name}"!`);
-        if (this.synth) this.synth.triggerAttack();
+        if (this.synth && this.synthTriggerAttackFunction) {
+            this.synthTriggerAttackFunction(this.synth);
+        }
 
         let previousBar = 0;
         let animationFrameId = null;
@@ -97,25 +131,21 @@ export class InstrumentTrack {
                 cancelAnimationFrame(animationFrameId);
 
                 this.state = 'has_sequence';
-                //if (this.synth) this.synth.triggerRelease();
+                if (this.synth && this.synthTriggerReleaseFunction) {
+                    this.synthTriggerReleaseFunction(this.synth);
+                }
                 console.log(`Grabación en "${this.name}" FINALIZADA.`);
-                //resolve();
-
-                // --- ¡LA LÓGICA DE REPRODUCCIÓN AHORA VIVE AQUÍ! ---
+                
                 const newGesture = this.getGesture();
                 if (newGesture && newGesture.length > 0 && this.gesturePlayer) {
                     console.log("Iniciando reproducción del gesto recién grabado...");
                     
-                    // Normalizamos el gesto para que empiece en t=0
                     const startTime = newGesture[0].t;
                     const normalizedGesture = newGesture.map(p => ({ t: p.t - startTime, c: p.c }));
                     
-                    // Le decimos al GesturePlayer que reproduzca este gesto en esta misma pista ('this').
                     this.gesturePlayer.playGesture(this, normalizedGesture, 0);
                 }
-                // --- FIN DE LA LÓGICA DE REPRODUCCIÓN ---
-                
-                resolve(); // La grabación ha terminado.
+                resolve();
             } else {
                 previousBar = currentBarInt;
                 animationFrameId = requestAnimationFrame(watchForLoopEnd);
@@ -142,30 +172,8 @@ export class InstrumentTrack {
         return this.gesture;
     }
 
-    serialize() {
-        if (this.state !== 'has_sequence') return null;
-        return {
-            type: 'instrument',
-            name: this.name,
-            volume: this.channel.volume.value,
-            pan: this.channel.pan.value,
-            mute: this.channel.mute,
-            gesture: this.gesture
-        };
-    }
-
-    async loadData(trackData) {
-        this.name = trackData.name;
-        this.channel.volume.value = trackData.volume;
-        this.channel.pan.value = trackData.pan;
-        this.channel.mute = trackData.mute;
-        this.gesture = trackData.gesture || [];
-
-        if (this.gesture.length > 0) {
-            this.state = 'has_sequence';
-            const startTime = this.gesture[0].t;
-            const normalizedGesture = this.gesture.map(p => ({ t: p.t - startTime, c: p.c }));
-            this.gesturePlayer.playGesture(this, normalizedGesture, 0);
-        }
+    dispose() {
+        if (this.synth) this.synth.dispose();
+        if (this.channel) this.channel.dispose();
     }
 }

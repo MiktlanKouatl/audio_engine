@@ -5,6 +5,7 @@ import { VisualScene } from './modules/VisualScene.js';
 import { GestureLibrary } from './modules/GestureLibrary.js';
 import { InstrumentTrack } from './modules/InstrumentTrack.js'; // Asegúrate que esta importación esté
 import { sessionManager } from './managers/SessionManager.js';
+import { SOUND_BANK } from './modules/SoundBank.js';
 
 function init() {
     console.log("Inicializando aplicación...");
@@ -35,14 +36,24 @@ function init() {
                     const timeInBeats = audioEngine.getTransportState().beats; 
                     activeTrack.recordGesture(timeInBeats, data);
                 }
-                audioEngine.playPreviewNote(data);
+                break;
+            case 'disc-start-interaction':
+            case 'disc-update-interaction':
+            case 'disc-end-interaction':
+                audioEngine.handleVisualInteraction(data);
                 break;
             case 'track-param-change':
                 const { trackId, param, value } = data.payload;
                 const track = audioEngine.tracks.find(t => t.id === trackId);
                 if (track) {
                     if (param === 'volume') {
-                        track.setVolume(value);
+                        if (track instanceof InstrumentTrack) {
+                            // InstrumentTrack usa un canal de Tone.js directamente
+                            track.channel.volume.value = value;
+                        } else {
+                            // Otros tipos de pista pueden tener su propio método
+                            track.setVolume(value);
+                        }
                     }
                     // En el futuro, aquí se manejarían otros parámetros como 'pan'
                 }
@@ -80,7 +91,8 @@ function init() {
                                     id: track.id,
                                     name: track.name,
                                     type: track instanceof InstrumentTrack ? 'instrument' : 'audio',
-                                    position: position
+                                    position: position,
+                                    mode: track.mode // Pass the mode for instrument tracks
                                 });
                             }
                         });
@@ -94,6 +106,20 @@ function init() {
                         console.error("Error al cargar la sesión:", error);
                         alert("Error al cargar la sesión.");
                     }
+                }
+                break;
+            }
+            case 'track-mode-change': {
+                const { trackId } = data.payload;
+                const instrumentTrack = audioEngine.tracks.find(t => t.id === trackId);
+                if (instrumentTrack && instrumentTrack instanceof InstrumentTrack) {
+                    const modes = Object.keys(SOUND_BANK);
+                    const currentModeIndex = modes.indexOf(instrumentTrack.mode);
+                    const nextModeIndex = (currentModeIndex + 1) % modes.length;
+                    const newMode = modes[nextModeIndex];
+
+                    instrumentTrack.setMode(newMode);
+                    visualScene.updateTrackModeDisplay(trackId, newMode);
                 }
                 break;
             }
@@ -122,7 +148,21 @@ function init() {
             if (trackObject) {
                 audioEngine.setActiveTrack(trackObject);
                 visualScene.setActiveTrackUI(trackId);
+
+                // Get the position of the selected track from SphereManager
+                const slotIndex = sphereManager.tracks.get(trackId);
+                if (slotIndex !== undefined) {
+                    const trackPosition = sphereManager.slots[slotIndex].position;
+                    console.log(`Selected track ID: ${trackId}, Position:`, trackPosition);
+                    visualScene.updateMainSpherePolePosition(trackPosition);
+                }
             }
+            return;
+        }
+
+        if (elementName.startsWith('change-mode-')) {
+            const trackId = parseInt(elementName.split('-').pop());
+            visualScene.onInteraction({ type: 'track-mode-change', payload: { trackId } });
             return;
         }
         
@@ -176,6 +216,7 @@ function init() {
                     });
                     audioEngine.setActiveTrack(newAudioTrack);
                     visualScene.setActiveTrackUI(newAudioTrack.id);
+                    visualScene.updateMainSpherePolePosition(position);
                 } else {
                     audioEngine.deleteTrack(newAudioTrack);
                     console.log("No se pudo crear la pista: no hay más slots.");
@@ -192,10 +233,12 @@ function init() {
                         id: newInstrumentTrack.id,
                         name: newInstrumentTrack.name,
                         type: 'instrument',
-                        position: position
+                        position: position,
+                        mode: newInstrumentTrack.mode // Pass the initial mode
                     });
                     audioEngine.setActiveTrack(newInstrumentTrack);
                     visualScene.setActiveTrackUI(newInstrumentTrack.id);
+                    visualScene.updateMainSpherePolePosition(position);
                 } else {
                     audioEngine.deleteTrack(newInstrumentTrack);
                     console.log("No se pudo crear la pista: no hay más slots.");

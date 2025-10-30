@@ -325,24 +325,42 @@ export class AudioEngine {
         }
     }
     // Synte
-    playPreviewNote({ coords, active }) {
-        if (!this.previewSynth) return;
+    handleVisualInteraction(data) {
+        const { type, coords } = data;
+        const track = this.activeTrack;
 
-        if (active && coords) {
-            // 1. TRADUCIMOS las coordenadas a datos musicales aquí, en el motor de audio.
-            const musicalData = pointToMusicalData(coords.x, coords.y);
-
-            // 2. Verificamos que la traducción fue exitosa.
-            if (musicalData) {
-                console.log(`Preview Note - Freq: ${musicalData.freq}, Velocity: ${musicalData.velocity}, Active: ${active}`);
-                
-                // 3. Usamos los datos musicales correctos para controlar el sinte.
-                const volumeInDb = -30 + musicalData.velocity * 30;
-                this.previewSynth.volume.value = volumeInDb;
-                this.previewSynth.triggerAttack(musicalData.freq);
-            }
+        // Si la pista activa es una pista de instrumento, delega la interacción a ella.
+        if (track && track instanceof InstrumentTrack) {
+            track.handleInteraction(data);
         } else {
-            this.previewSynth.triggerRelease();
+            // Comportamiento de previsualización para cuando no hay una pista de instrumento activa.
+            if (!this.previewSynth) return;
+
+            switch (type) {
+                case 'disc-start-interaction':
+                    if (coords) {
+                        const musicalData = pointToMusicalData(coords.x, coords.y);
+                        if (musicalData) {
+                            const volumeInDb = -30 + musicalData.velocity * 30;
+                            this.previewSynth.volume.value = volumeInDb;
+                            this.previewSynth.triggerAttack(musicalData.freq);
+                        }
+                    }
+                    break;
+                case 'disc-update-interaction':
+                    if (coords) {
+                        const musicalData = pointToMusicalData(coords.x, coords.y);
+                        if (musicalData) {
+                            const volumeInDb = -30 + musicalData.velocity * 30;
+                            this.previewSynth.volume.value = volumeInDb;
+                            this.previewSynth.frequency.value = musicalData.freq;
+                        }
+                    }
+                    break;
+                case 'disc-end-interaction':
+                    this.previewSynth.triggerRelease();
+                    break;
+            }
         }
     }
 

@@ -30,12 +30,6 @@ export class GesturePlayer {
             duration: duration,
             trackRef: track
         });
-
-        // --- ¡CAMBIO CLAVE! ---
-        // Le decimos al sinte que empiece a sonar AHORA y se mantenga así.
-        if (track.synth) {
-            track.synth.triggerAttack();
-        }
     }
 
     stopGesture(trackId) {

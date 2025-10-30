@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { Text } from 'troika-three-text';
 
 export class TrackWidget extends THREE.Group {
     constructor(trackData, interactiveControls, materials) {
@@ -64,6 +65,28 @@ export class TrackWidget extends THREE.Group {
         interactiveControls.push(deleteButton);
         this.interactiveObjects.push(deleteButton);
 
+        // --- Modo Instrumento (solo para Instrument Tracks) ---
+        if (trackData.type === 'instrument') {
+            this.modeText = new Text();
+            this.modeText.text = trackData.mode ? trackData.mode.toUpperCase() : 'MELODIC';
+            this.modeText.font = '../GoogleSansCode-VariableFont_wght.ttf';
+            this.modeText.fontSize = 0.1;
+            this.modeText.color = 0xFFFFFF;
+            this.modeText.anchorX = 'center';
+            this.modeText.anchorY = 'middle';
+            this.modeText.position.set(0, -0.5, 0.02);
+            this.add(this.modeText);
+            this.modeText.sync();
+
+            // Hitbox para cambiar el modo
+            const modeHitbox = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.2), new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.5, side: THREE.DoubleSide }));
+            modeHitbox.name = `change-mode-${this.trackId}`;
+            modeHitbox.position.set(0, -0.5, 0.02);
+            this.add(modeHitbox);
+            interactiveControls.push(modeHitbox);
+            this.interactiveObjects.push(modeHitbox);
+        }
+
         // --- Panel de Volumen ---
         this.volumePanel = new THREE.Group();
         this.volumePanel.position.set(0, 1.1, 0);
@@ -114,6 +137,13 @@ export class TrackWidget extends THREE.Group {
     setActive(isActive) {
         this.selectionIndicator.visible = isActive;
         this.volumePanel.visible = isActive;
+    }
+
+    updateModeDisplay(modeName) {
+        if (this.modeText) {
+            this.modeText.text = modeName.toUpperCase();
+            this.modeText.sync();
+        }
     }
 
     setBounceSelected(isSelected) {
