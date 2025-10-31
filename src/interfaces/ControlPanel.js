@@ -2,9 +2,11 @@
 import { Pane } from 'tweakpane';
 
 export class ControlPanel {
-    constructor(container, audioEngine) {
+    constructor(container, audioEngine, visualScene, sphereManager) {
         this.container = container;
         this.audioEngine = audioEngine;
+        this.visualScene = visualScene;
+        this.sphereManager = sphereManager;
         this.pane = null;
     }
 
@@ -83,6 +85,8 @@ export class ControlPanel {
         this.pane.addButton({ title: 'Delete Track' }).on('click', () => {
             if (confirm(`¿Seguro que quieres borrar "${track.name}"?`)) {
                 this.audioEngine.deleteTrack(track);
+                this.visualScene.deleteTrackUI(track.id);
+                this.sphereManager.removeTrack(track.id);
                 this.pane.dispose();
             }
         });

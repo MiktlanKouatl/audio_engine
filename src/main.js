@@ -27,7 +27,7 @@ function init() {
     const controlPanelContainer = document.createElement('div');
     controlPanelContainer.id = 'control-panel-container';
     document.body.appendChild(controlPanelContainer);
-    const controlPanel = new ControlPanel(controlPanelContainer, audioEngine);
+    const controlPanel = new ControlPanel(controlPanelContainer, audioEngine, visualScene, sphereManager);
 
     // Conexión central: La escena visual notifica a main.js sobre las interacciones
     visualScene.onInteraction = async (data) => {
@@ -171,6 +171,19 @@ function init() {
         if (elementName.startsWith('change-mode-')) {
             const trackId = parseInt(elementName.split('-').pop());
             visualScene.onInteraction({ type: 'track-mode-change', payload: { trackId } });
+            return;
+        }
+
+        if (elementName.startsWith('mute-track-')) {
+            const trackId = parseInt(elementName.split('-').pop());
+            const track = audioEngine.tracks.find(t => t.id === trackId);
+            if (track) {
+                track.toggleMute();
+                const widget = visualScene.trackUIComponents[trackId];
+                if (widget) {
+                    widget.setMuteState(track.channel.mute);
+                }
+            }
             return;
         }
         
@@ -344,6 +357,12 @@ function init() {
         const activeTrack = audioEngine.activeTrack;
         
         audioEngine.tracks.forEach(track => {
+            const widget = visualScene.trackUIComponents[track.id];
+            if (widget && track.state === 'has_loop' && !widget.isRecorded) {
+                visualScene.setTrackAsRecorded(track.id);
+                widget.setMuteState(track.channel.mute);
+            }
+
             if (track instanceof InstrumentTrack) {
                 const coord = audioEngine.gesturePlayer.getCurrentCoordinate(track.id);
                 let isVisible = activeTrack ? (activeTrack.id === track.id) : true;

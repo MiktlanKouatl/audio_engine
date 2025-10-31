@@ -6,6 +6,8 @@ export class TrackWidget extends THREE.Group {
         super();
 
         this.trackId = trackData.id;
+        this.isRecorded = false;
+        this.interactiveControls = interactiveControls; // Store a reference
         this.interactiveObjects = []; // Para gestionar los objetos interactivos de este widget
 
         // --- Posicionamiento y Orientación ---
@@ -54,6 +56,18 @@ export class TrackWidget extends THREE.Group {
         this.add(this.recButton);
         interactiveControls.push(this.recButton);
         this.interactiveObjects.push(this.recButton);
+
+        // --- Botón de Mute/Unmute ---
+        const muteGeo = new THREE.CircleGeometry(0.1, 16);
+        const muteMat = new THREE.MeshBasicMaterial({ color: 0x808080, side: THREE.DoubleSide }); // Grey color
+        this.muteButton = new THREE.Mesh(muteGeo, muteMat);
+        this.muteButton.name = `mute-track-${this.trackId}`;
+        this.muteButton.position.set(0, 0, -0.05);
+        this.muteButton.rotation.x = Math.PI;
+        this.muteButton.visible = false; // Initially hidden
+        this.add(this.muteButton);
+        interactiveControls.push(this.muteButton);
+        this.interactiveObjects.push(this.muteButton);
 
         // --- Botón de Borrar (Delete) ---
         const deleteGeo = new THREE.CircleGeometry(0.1, 16);
@@ -152,6 +166,30 @@ export class TrackWidget extends THREE.Group {
 
     setArmed(isArmed, materials) {
         this.recButton.material = isArmed ? materials.metronomeOnMaterial : materials.metronomeOffMaterial;
+    }
+
+    setRecordedState(isRecorded) {
+        this.recButton.visible = !isRecorded;
+        this.muteButton.visible = isRecorded;
+        this.isRecorded = isRecorded;
+
+        if (isRecorded) {
+            const index = this.interactiveControls.indexOf(this.recButton);
+            if (index > -1) {
+                this.interactiveControls.splice(index, 1);
+            }
+            this.interactiveControls.push(this.muteButton);
+        } else {
+            const index = this.interactiveControls.indexOf(this.muteButton);
+            if (index > -1) {
+                this.interactiveControls.splice(index, 1);
+            }
+            this.interactiveControls.push(this.recButton);
+        }
+    }
+
+    setMuteState(isMuted) {
+        this.muteButton.material.color.set(isMuted ? 0xFF4136 : 0x808080);
     }
 
     updateVolumeSlider(value, materials) { // value es 0-1

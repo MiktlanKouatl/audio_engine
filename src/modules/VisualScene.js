@@ -296,6 +296,13 @@ export class VisualScene {
         }
     }
 
+    setTrackAsRecorded(trackId) {
+        const widget = this.trackUIComponents[trackId];
+        if (widget) {
+            widget.setRecordedState(true);
+        }
+    }
+
     setActiveTrackUI(activeTrackId) {
         for (const id in this.trackUIComponents) {
             const widget = this.trackUIComponents[id];
