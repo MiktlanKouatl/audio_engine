@@ -24,6 +24,7 @@ export class AudioEngine {
         this.metronomeLoop = null;
         this.activeTrack = null;
         this.gesturePlayer = new GesturePlayer();
+        this.soloedTrack = null;
 
         // ¡SOLUCIÓN! Creamos la instancia del RecorderModule aquí.
         this.recorderModule = new RecorderModule(this.transport);
@@ -201,6 +202,26 @@ export class AudioEngine {
             // 2. Después, la eliminamos de la lista de pistas activas.
             this.tracks.splice(trackIndex, 1);
             console.log(`Pista "${trackToDelete.name}" eliminada del motor.`);
+        }
+    }
+
+    soloTrack(trackToSolo) {
+        if (this.soloedTrack === trackToSolo) {
+            // Unsolo the track
+            this.soloedTrack = null;
+            this.tracks.forEach(track => {
+                track.channel.mute = false;
+            });
+        } else {
+            // Solo the track
+            this.soloedTrack = trackToSolo;
+            this.tracks.forEach(track => {
+                if (track === trackToSolo) {
+                    track.channel.mute = false;
+                } else {
+                    track.channel.mute = true;
+                }
+            });
         }
     }
 

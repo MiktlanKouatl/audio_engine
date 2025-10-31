@@ -6,6 +6,7 @@ import { GestureLibrary } from './modules/GestureLibrary.js';
 import { InstrumentTrack } from './modules/InstrumentTrack.js'; // Asegúrate que esta importación esté
 import { sessionManager } from './managers/SessionManager.js';
 import { SOUND_BANK } from './modules/SoundBank.js';
+import { ControlPanel } from './interfaces/ControlPanel.js';
 
 function init() {
     console.log("Inicializando aplicación...");
@@ -21,6 +22,12 @@ function init() {
     const audioEngine = new AudioEngine();
     const sphereManager = new SphereManager();
     const visualScene = new VisualScene('scene-container', sphereManager);
+
+    // Crear el contenedor para el panel de control y añadirlo al cuerpo del documento.
+    const controlPanelContainer = document.createElement('div');
+    controlPanelContainer.id = 'control-panel-container';
+    document.body.appendChild(controlPanelContainer);
+    const controlPanel = new ControlPanel(controlPanelContainer, audioEngine);
 
     // Conexión central: La escena visual notifica a main.js sobre las interacciones
     visualScene.onInteraction = async (data) => {
@@ -148,6 +155,7 @@ function init() {
             if (trackObject) {
                 audioEngine.setActiveTrack(trackObject);
                 visualScene.setActiveTrackUI(trackId);
+                controlPanel.showForTrack(trackObject);
 
                 // Get the position of the selected track from SphereManager
                 const slotIndex = sphereManager.tracks.get(trackId);
