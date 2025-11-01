@@ -8,7 +8,32 @@ export class ControlPanel {
         this.visualScene = visualScene;
         this.sphereManager = sphereManager;
         this.pane = null;
+
+        if (this.container && this.container.style) {
+            const s = this.container.style;
+            s.position = 'fixed';
+            s.right = '20px';
+            s.bottom = '20px';
+            s.width = '320px';
+            s.top = 'auto';
+            s.left = 'auto';
+            s.zIndex = '1000';
+            s.pointerEvents = 'auto';
+            
+        }
+        // Style the container so the control panel appears at the bottom-right
+        /* if (this.container && this.container.style) {
+            const s = this.container.style;
+            s.position = 'fixed';
+            s.right = '20px';
+            s.bottom = '20px';
+            s.width = '320px';
+            s.zIndex = '1000';
+            s.pointerEvents = 'auto';
+        } */
     }
+
+
 
     showForTrack(track) {
         if (this.pane) {
