@@ -117,8 +117,7 @@ export class VisualScene {
         this.instrumentWidget = new DualArcInstrumentWidget();
         this.uiContainer.add(this.instrumentWidget);
 
-        this.sessionListWidget = new SessionListWidget(this.interactiveControls);
-        this.uiContainer.add(this.sessionListWidget);
+        this.sessionListWidget = new SessionListWidget();
 
         this.dragProxySphere = new THREE.Mesh(
             new THREE.SphereGeometry(3.7, 32, 32),
@@ -162,12 +161,17 @@ export class VisualScene {
     }
 
     showSessionList(sessions) {
-        this.sessionListWidget.populate(sessions);
+        const onSessionClick = (sessionName) => {
+            if (this.onInteraction) {
+                this.onInteraction({ type: 'load-session-by-name', payload: { sessionName } });
+            }
+        };
+        this.sessionListWidget.populate(sessions, onSessionClick);
+        this.sessionListWidget.show();
     }
 
     hideSessionList() {
-        this.sessionListWidget.clear();
-        this.sessionListWidget.visible = false;
+        this.sessionListWidget.hide();
     }
 
     rebuildVisualizers(measureCount, timeSignature) {
@@ -386,14 +390,6 @@ export class VisualScene {
             const intersectedObject = controlIntersects[0].object;
             const name = intersectedObject.name;
 
-            if (name.startsWith('load-session-name-')) {
-                const sessionName = name.substring('load-session-name-'.length);
-                if (this.onInteraction) {
-                    this.onInteraction({ type: 'load-session-by-name', payload: { sessionName } });
-                }
-                this.hideSessionList();
-                return;
-            }
             
 
             if (name.startsWith('track-select-')) {
