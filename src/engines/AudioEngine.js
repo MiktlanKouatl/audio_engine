@@ -472,4 +472,18 @@ export class AudioEngine {
             }, "0");
         });
     }
+
+    async importAudioTrack(audioFile, trackName) {
+        const newTrack = this.createAudioTrack(trackName);
+        const url = URL.createObjectURL(audioFile);
+        await newTrack.player.load(url);
+        newTrack.state = 'has_loop';
+
+        // Store the blob for serialization
+        const response = await fetch(url);
+        newTrack.audioBlob = await response.blob();
+
+        newTrack.player.sync().start(0);
+        return newTrack;
+    }
 }

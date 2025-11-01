@@ -115,6 +115,13 @@ export class ControlPanel {
                 this.pane.dispose();
             }
         });
+
+        // Botón de Exportar a .WAV
+        this.pane.addButton({ title: 'Exportar a .WAV' }).on('click', () => {
+            if (this.audioEngine.activeTrack) {
+                this.audioEngine.activeTrack.exportToWAV();
+            }
+        });
     }
 
     hide() {

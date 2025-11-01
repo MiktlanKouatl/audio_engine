@@ -9,6 +9,7 @@ export class GlobalControlsWidget extends THREE.Group {
 
         this.audioTrackButton = null;
         this.instrumentTrackButton = null;
+        this.importAudioButton = null;
         this.saveSessionButton = null;
         this.loadSessionButton = null;
         this.bounceButton = null;
@@ -128,20 +129,23 @@ export class GlobalControlsWidget extends THREE.Group {
         if (this.instrumentTrackButton) {
             this.instrumentTrackButton.position.set(right - 1, top - 0.5, 0);
         }
+        if (this.importAudioButton) {
+            this.importAudioButton.position.set(right - 1, top - 1.0, 0);
+        }
         if (this.saveSessionButton) {
-            this.saveSessionButton.position.set(right - 1, top - 1.0, 0);
+            this.saveSessionButton.position.set(right - 1, top - 1.5, 0);
         }
         if (this.loadSessionButton) {
-            this.loadSessionButton.position.set(right - 1, top - 1.5, 0);
+            this.loadSessionButton.position.set(right - 1, top - 2.0, 0);
         }
         if (this.bounceButton) {
-            this.bounceButton.position.set(right - 1, top - 2.0, 0);
+            this.bounceButton.position.set(right - 1, top - 2.5, 0);
         }
         if (this.confirmBounceButton) {
-            this.confirmBounceButton.position.set(right - 1, top - 2.5, 0);
+            this.confirmBounceButton.position.set(right - 1, top - 3.0, 0);
         }
         if (this.cancelBounceButton) {
-            this.cancelBounceButton.position.set(right - 1, top - 3.0, 0);
+            this.cancelBounceButton.position.set(right - 1, top - 3.5, 0);
         }
     }
 
@@ -200,6 +204,27 @@ export class GlobalControlsWidget extends THREE.Group {
             instrumentHitbox.name = 'create-instrument-track';
             this.instrumentTrackButton.add(instrumentHitbox);
             this.interactiveControls.push(instrumentHitbox);
+        });
+
+        this.importAudioButton = new THREE.Group();
+        const importAudioText = new Text();
+        importAudioText.text = '[+ IMPORTAR AUDIO]';
+        importAudioText.font = '../GoogleSansCode-VariableFont_wght.ttf';
+        importAudioText.fontSize = 0.2;
+        importAudioText.color = 0xFFFFFF;
+        importAudioText.anchorX = 'center';
+        importAudioText.anchorY = 'middle';
+        this.importAudioButton.add(importAudioText);
+        this.add(this.importAudioButton);
+
+        importAudioText.sync(() => {
+            const bbox = importAudioText.geometry.boundingBox;
+            const width = bbox.max.x - bbox.min.x;
+            const height = bbox.max.y - bbox.min.y;
+            const importAudioHitbox = new THREE.Mesh(new THREE.PlaneGeometry(width, height), this.buttonMaterial);
+            importAudioHitbox.name = 'import-audio-track';
+            this.importAudioButton.add(importAudioHitbox);
+            this.interactiveControls.push(importAudioHitbox);
         });
     }
 

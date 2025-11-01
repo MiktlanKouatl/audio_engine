@@ -319,6 +319,29 @@ function init() {
             case 'cancel-bounce':
                 visualScene.exitBounceMode();
                 break;
+            case 'import-audio-track': {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'audio/*';
+                input.onchange = async (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        const trackName = file.name;
+                        const newTrack = await audioEngine.importAudioTrack(file, trackName);
+                        const position = sphereManager.addTrack(newTrack.id);
+                        if (position) {
+                            visualScene.createTrackUI({
+                                id: newTrack.id,
+                                name: newTrack.name,
+                                type: 'audio',
+                                position: position
+                            });
+                        }
+                    }
+                };
+                input.click();
+                break;
+            }
         }
     }
 
