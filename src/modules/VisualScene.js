@@ -44,9 +44,8 @@ export class VisualScene {
 
         // Parámetros del Metrónomo
         this.isMetronomeOn = false;
-        this.metronomeOnMaterial = new THREE.MeshBasicMaterial({ color: 0x01FF70 }); // Verde encendido
-        this.metronomeOffMaterial = new THREE.MeshBasicMaterial({ color: 0x555555 });// Gris apagado
-        this.volumeDotOnMaterial = new THREE.MeshBasicMaterial({ color: 0x01FF70 });
+    this.metronomeOnMaterial = new THREE.MeshBasicMaterial({ color: 0x01FF70 }); // Verde encendido
+    this.metronomeOffMaterial = new THREE.MeshBasicMaterial({ color: 0x555555 });// Gris apagado
 
         // Elementos y Estado de la UI
         this.trackSlots = {};
@@ -65,9 +64,8 @@ export class VisualScene {
         this.onInteraction = null;
 
         // Estados de Arrastre
-        this.isDraggingSphere = false;
-        this.isDraggingVolume = false;
-        this.isDraggingTrack = false;
+    this.isDraggingSphere = false;
+    this.isDraggingTrack = false;
         this.dragStart = { x: 0, y: 0, time: 0 };
         this.previousPointerPosition = { x: 0, y: 0 }; // Para arrastrar la esfera
         this.draggedTrack = null; // Objeto para la información de arrastre
@@ -234,8 +232,7 @@ export class VisualScene {
     createTrackUI(trackData) {
         const materials = {
             metronomeOnMaterial: this.metronomeOnMaterial,
-            metronomeOffMaterial: this.metronomeOffMaterial,
-            volumeDotOnMaterial: this.volumeDotOnMaterial
+            metronomeOffMaterial: this.metronomeOffMaterial
         };
     
         const newWidget = new TrackWidget(trackData, this.interactiveControls, materials);
@@ -373,58 +370,7 @@ export class VisualScene {
         }
     }
     
-    _handleVolumeDrag(event) {
-        try {
-            if (!this.draggedTrackId && this.draggedTrackId !== 0) {
-                return;
-            }
-
-            const widget = this.trackUIComponents[this.draggedTrackId];
-            if (!widget) return;
-
-            if (!widget.volumePanel || !Array.isArray(widget.volumePanel.children)) return;
-
-            const sliderHitbox = widget.volumePanel.children.find(c => c.name && c.name.startsWith('volume-slider-'));
-            if (!sliderHitbox) return;
-
-            this.pointer.x = (event.clientX / this.container.clientWidth) * 2 - 1;
-            this.pointer.y = -(event.clientY / this.container.clientHeight) * 2 + 1;
-            this.raycaster.setFromCamera(this.pointer, this.camera);
-
-            const intersects = this.raycaster.intersectObject(sliderHitbox).slice();
-            if (intersects.length === 0 && sliderHitbox.children && sliderHitbox.children.length > 0) {
-                const childIntersects = this.raycaster.intersectObjects(sliderHitbox.children, true);
-                if (childIntersects.length > 0) intersects.push(childIntersects[0]);
-            }
-
-            if (intersects.length > 0) {
-                const localPoint = sliderHitbox.worldToLocal(intersects[0].point.clone());
-
-                if (!sliderHitbox.geometry.boundingBox) {
-                    sliderHitbox.geometry.computeBoundingBox();
-                }
-                const box = sliderHitbox.geometry.boundingBox;
-                const height = box.max.y - box.min.y;
-                if (height === 0) return;
-
-                const rawValue = (localPoint.y - box.min.y) / height;
-                const value = Math.max(0, Math.min(1, rawValue));
-                const db = (value * 54) - 48;
-
-                if (this.onInteraction) {
-                    this.onInteraction({ type: 'track-param-change', payload: { trackId: this.draggedTrackId, param: 'volume', value: db } });
-                }
-
-                if (typeof widget.updateVolumeSlider === 'function') {
-                    widget.updateVolumeSlider(value, {
-                        volumeDotOnMaterial: this.volumeDotOnMaterial,
-                        metronomeOffMaterial: this.metronomeOffMaterial
-                    });
-                }
-            }
-        } catch (err) {
-        }
-    }
+    // Volume drag handling removed (volume UI moved out of 3D widgets)
 
     _onPointerDown(event) {
         this.dragStart.x = event.clientX;
@@ -448,21 +394,7 @@ export class VisualScene {
                 this.hideSessionList();
                 return;
             }
-
-            if (name.startsWith('delete-track-')) {
-                const trackId = parseInt(name.split('-').pop());
-                if (this.onInteraction) {
-                    this.onInteraction({ type: 'track-delete', payload: { trackId } });
-                }
-                return;
-            }
-
-            if (name.startsWith('volume-slider-')) {
-                this.isDraggingVolume = true;
-                this.draggedTrackId = parseInt(name.split('-').pop());
-                this._handleVolumeDrag(event);
-                return;
-            }
+            
 
             if (name.startsWith('track-select-')) {
                 const trackId = parseInt(name.split('-').pop());
@@ -592,8 +524,7 @@ export class VisualScene {
             }
             this.isInteracting = false;
         }
-        this.isDraggingVolume = false;
-        this.draggedTrackId = null;
+    this.draggedTrackId = null;
         
         this.interactionLight.intensity = 0;
         if (this.isInteracting && this.onInteraction) {
@@ -626,10 +557,7 @@ export class VisualScene {
             return;
         }
 
-        if (this.isDraggingVolume) {
-            this._handleVolumeDrag(event);
-            return;
-        }
+        
 
         if (this.isDraggingSphere) {
             const deltaX = event.clientX - this.previousPointerPosition.x;

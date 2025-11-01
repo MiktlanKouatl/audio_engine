@@ -62,7 +62,7 @@ export class DualArcInstrumentWidget extends THREE.Group {
         this.add(this.rightHitbox);
 
         // Posicionamos el widget completo
-        this.position.y = -1;
+        //this.position.y = -1;
     }
 
     _createArc(geometry, material, radius, startAngle, endAngle) {

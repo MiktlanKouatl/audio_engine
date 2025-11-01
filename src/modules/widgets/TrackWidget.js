@@ -14,8 +14,8 @@ export class TrackWidget extends THREE.Group {
         this.position.copy(trackData.position).normalize().multiplyScalar(3.7);
         this.lookAt(0, 0, 0);
 
-        // --- Materiales ---
-        const { metronomeOffMaterial, volumeDotOnMaterial } = materials;
+    // --- Materiales ---
+    const { metronomeOffMaterial } = materials;
 
         // --- Botón de Selección (Círculo Principal) ---
         const selectGeo = new THREE.CircleGeometry(0.3, 32);
@@ -69,15 +69,7 @@ export class TrackWidget extends THREE.Group {
         interactiveControls.push(this.muteButton);
         this.interactiveObjects.push(this.muteButton);
 
-        // --- Botón de Borrar (Delete) ---
-        const deleteGeo = new THREE.CircleGeometry(0.1, 16);
-        const deleteMat = new THREE.MeshBasicMaterial({ color: 0x8B0000, side: THREE.DoubleSide }); // DarkRed color
-        const deleteButton = new THREE.Mesh(deleteGeo, deleteMat);
-        deleteButton.name = `delete-track-${this.trackId}`;
-        deleteButton.position.set(0.45, 0, 0.02); // Position it to the side
-        this.add(deleteButton);
-        interactiveControls.push(deleteButton);
-        this.interactiveObjects.push(deleteButton);
+    // (Delete button removed — handled elsewhere or no longer needed)
 
         // --- Modo Instrumento (solo para Instrument Tracks) ---
         if (trackData.type === 'instrument') {
@@ -101,56 +93,11 @@ export class TrackWidget extends THREE.Group {
             this.interactiveObjects.push(modeHitbox);
         }
 
-        // --- Panel de Volumen ---
-        this.volumePanel = new THREE.Group();
-        this.volumePanel.position.set(0, 1.1, 0);
-        //this.volumePanel.rotation.x = -Math.PI / 12;
-        this.volumePanel.visible = false;
-        this.add(this.volumePanel);
-
-        const panelShape = new THREE.Shape();
-        const width = 0.3, height = 1.5, radius = 0.1;
-        panelShape.moveTo(-width / 2, -height / 2 + radius);
-        panelShape.lineTo(-width / 2, height / 2 - radius);
-        panelShape.quadraticCurveTo(-width / 2, height / 2, -width / 2 + radius, height / 2);
-        panelShape.lineTo(width / 2 - radius, height / 2);
-        panelShape.quadraticCurveTo(width / 2, height / 2, width / 2, height / 2 - radius);
-        panelShape.lineTo(width / 2, -height / 2 + radius);
-        panelShape.quadraticCurveTo(width / 2, -height / 2, width / 2 - radius, -height / 2);
-        panelShape.lineTo(-width / 2 + radius, -height / 2);
-        panelShape.quadraticCurveTo(-width / 2, -height / 2, -width / 2, -height / 2 + radius);
-        
-        const panelGeo = new THREE.ShapeGeometry(panelShape);
-        const panelMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.6, side: THREE.DoubleSide });
-        const panelBg = new THREE.Mesh(panelGeo, panelMat);
-        panelBg.position.z = -0.01;
-        this.volumePanel.add(panelBg);
-
-        const dotCount = 8;
-        const dotGeo = new THREE.CircleGeometry(0.05, 8);
-        const dotOffMat = new THREE.MeshBasicMaterial({ color: 0x555555, side: THREE.DoubleSide });
-        this.volumeDots = [];
-        for (let i = 0; i < dotCount; i++) {
-            const dot = new THREE.Mesh(dotGeo, dotOffMat.clone());
-            const yPos = (-height / 2) + 0.25 + (i / (dotCount - 1)) * (height - 0.5);
-            dot.position.set(0, yPos, -0.02);
-            dot.rotation.y = Math.PI;
-            this.volumePanel.add(dot);
-            this.volumeDots.push(dot);
-        }
-
-        const sliderHitbox = new THREE.Mesh(new THREE.PlaneGeometry(width, height), new THREE.MeshBasicMaterial({ color: 0xff0000, visible:false }));
-        sliderHitbox.name = `volume-slider-${this.trackId}`;
-        sliderHitbox.position.z = -0.02;
-        sliderHitbox.rotation.y = Math.PI;
-        this.volumePanel.add(sliderHitbox);
-        interactiveControls.push(sliderHitbox);
-        this.interactiveObjects.push(sliderHitbox);
+        // Volume panel removed — volume control handled elsewhere or not needed
     }
 
     setActive(isActive) {
         this.selectionIndicator.visible = isActive;
-        this.volumePanel.visible = isActive;
     }
 
     updateModeDisplay(modeName) {
@@ -192,10 +139,9 @@ export class TrackWidget extends THREE.Group {
         this.muteButton.material.color.set(isMuted ? 0xFF4136 : 0x808080);
     }
 
-    updateVolumeSlider(value, materials) { // value es 0-1
-        this.volumeDots.forEach((dot, index) => {
-            dot.material = index < value * this.volumeDots.length ? materials.volumeDotOnMaterial : materials.metronomeOffMaterial;
-        });
+    // Backwards-compatible alias used elsewhere in the app
+    setMuted(isMuted) {
+        this.setMuteState(isMuted);
     }
 
     dispose(interactiveControls) {
