@@ -144,6 +144,7 @@ export class VisualScene {
         this.globalControls.bounceButton.visible = false;
         this.globalControls.confirmBounceButton.visible = true;
         this.globalControls.cancelBounceButton.visible = true;
+        this.globalControls.selectAllBounceButton.visible = true;
     }
 
     exitBounceMode() {
@@ -151,6 +152,7 @@ export class VisualScene {
         this.globalControls.bounceButton.visible = true;
         this.globalControls.confirmBounceButton.visible = false;
         this.globalControls.cancelBounceButton.visible = false;
+        this.globalControls.selectAllBounceButton.visible = false;
         this.bounceSelection.forEach(trackId => {
             const widget = this.trackUIComponents[trackId];
             if (widget) {
@@ -390,7 +392,16 @@ export class VisualScene {
             const intersectedObject = controlIntersects[0].object;
             const name = intersectedObject.name;
 
-            
+            if (name === 'select-all-bounce') {
+                this.bounceSelection = Object.keys(this.trackUIComponents).map(id => parseInt(id));
+                for (const id of this.bounceSelection) {
+                    const widget = this.trackUIComponents[id];
+                    if (widget) {
+                        widget.setBounceSelected(true);
+                    }
+                }
+                return;
+            }
 
             if (name.startsWith('track-select-')) {
                 const trackId = parseInt(name.split('-').pop());

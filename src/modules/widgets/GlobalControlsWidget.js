@@ -15,6 +15,7 @@ export class GlobalControlsWidget extends THREE.Group {
         this.bounceButton = null;
         this.confirmBounceButton = null;
         this.cancelBounceButton = null;
+        this.selectAllBounceButton = null;
         this.buttonMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.0 });
 
         this._createNewTrackButtons();
@@ -144,8 +145,11 @@ export class GlobalControlsWidget extends THREE.Group {
         if (this.confirmBounceButton) {
             this.confirmBounceButton.position.set(right - 1, top - 3.0, 0);
         }
+        if (this.selectAllBounceButton) {
+            this.selectAllBounceButton.position.set(right - 1, top - 3.5, 0);
+        }
         if (this.cancelBounceButton) {
-            this.cancelBounceButton.position.set(right - 1, top - 3.5, 0);
+            this.cancelBounceButton.position.set(right - 1, top - 4.0, 0);
         }
     }
 
@@ -314,6 +318,28 @@ export class GlobalControlsWidget extends THREE.Group {
             confirmHitbox.name = 'confirm-bounce';
             this.confirmBounceButton.add(confirmHitbox);
             this.interactiveControls.push(confirmHitbox);
+        });
+
+        this.selectAllBounceButton = new THREE.Group();
+        const selectAllText = new Text();
+        selectAllText.text = '[ALL]';
+        selectAllText.font = '../GoogleSansCode-VariableFont_wght.ttf';
+        selectAllText.fontSize = 0.2;
+        selectAllText.color = 0xFFFFFF;
+        selectAllText.anchorX = 'center';
+        selectAllText.anchorY = 'middle';
+        this.selectAllBounceButton.add(selectAllText);
+        this.add(this.selectAllBounceButton);
+        this.selectAllBounceButton.visible = false;
+
+        selectAllText.sync(() => {
+            const bbox = selectAllText.geometry.boundingBox;
+            const width = bbox.max.x - bbox.min.x;
+            const height = bbox.max.y - bbox.min.y;
+            const selectAllHitbox = new THREE.Mesh(new THREE.PlaneGeometry(width, height), this.buttonMaterial);
+            selectAllHitbox.name = 'select-all-bounce';
+            this.selectAllBounceButton.add(selectAllHitbox);
+            this.interactiveControls.push(selectAllHitbox);
         });
 
         this.cancelBounceButton = new THREE.Group();
