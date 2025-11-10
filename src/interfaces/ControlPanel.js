@@ -109,10 +109,13 @@ export class ControlPanel {
         // Botón de Borrar
         this.pane.addButton({ title: 'Delete Track' }).on('click', () => {
             if (confirm(`¿Seguro que quieres borrar "${track.name}"?`)) {
+                if (this.audioEngine.activeTrack === track) {
+                    this.audioEngine.setActiveTrack(null);
+                }
                 this.audioEngine.deleteTrack(track);
                 this.visualScene.deleteTrackUI(track.id);
                 this.sphereManager.removeTrack(track.id);
-                this.pane.dispose();
+                this.hide();
             }
         });
 

@@ -185,7 +185,11 @@ export class AudioEngine {
      */
     setActiveTrack(trackToActivate) {
         this.activeTrack = trackToActivate;
-        console.log(`Pista activa ahora es: "${this.activeTrack.name}"`);
+        if (this.activeTrack) {
+            console.log(`Pista activa ahora es: "${this.activeTrack.name}"`);
+        } else {
+            console.log("Ninguna pista está activa.");
+        }
         // Aquí, en el futuro, notificaremos a la VisualScene para que actualice la UI.
     }
     /**

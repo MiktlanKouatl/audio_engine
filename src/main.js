@@ -69,6 +69,11 @@ function init() {
                 const { trackId } = data.payload;
                 const trackToDelete = audioEngine.tracks.find(t => t.id === trackId);
                 if (trackToDelete) {
+                    // Si la pista eliminada es la activa, oculta el panel de control.
+                    if (audioEngine.activeTrack === trackToDelete) {
+                        controlPanel.hide();
+                        audioEngine.setActiveTrack(null);
+                    }
                     audioEngine.deleteTrack(trackToDelete);
                     visualScene.deleteTrackUI(trackId);
                     sphereManager.removeTrack(trackId);
