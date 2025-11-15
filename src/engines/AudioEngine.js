@@ -1,6 +1,6 @@
 // AudioEngine.js
 // Usamos la importación selectiva para mantener el código limpio.
-import { Track } from '../modules/Track.js';
+import { AudioTrack } from '../modules/AudioTrack.js';
 import { InstrumentTrack } from '../modules/InstrumentTrack.js';
 import { RecorderModule } from '../modules/RecorderModule.js';
 import { GesturePlayer } from '../modules/GesturePlayer.js';
@@ -137,7 +137,7 @@ export class AudioEngine {
      */
     createAudioTrack(name) {
         const newId = this.trackIdCounter++;
-        const newTrack = new Track(newId, name, this.recorderModule, this.masterOut);
+        const newTrack = new AudioTrack(newId, name, this.recorderModule, this.masterOut);
         this.tracks.push(newTrack);
         console.log(`Pista de Audio "${name}" (ID: ${newId}) creada.`);
         if (!this.activeTrack) {

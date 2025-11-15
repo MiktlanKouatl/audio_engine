@@ -299,6 +299,13 @@ export class VisualScene {
         }
     }
 
+    updateTrackColor(trackId, newColor) {
+        const widget = this.trackUIComponents[trackId];
+        if (widget && typeof widget.setColor === 'function') {
+            widget.setColor(newColor);
+        }
+    }
+
     setTrackAsRecorded(trackId) {
         const widget = this.trackUIComponents[trackId];
         if (widget) {

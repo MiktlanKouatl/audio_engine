@@ -28,7 +28,7 @@ El desarrollo se divide en fases, donde cada una construye sobre la anterior par
 
 **Objetivo:** Establecer la arquitectura base con un `Transport` funcional y una única pista de secuenciador no interactiva.
 
-* [ ] **1. Estructura del Proyecto:** Crear el layout de archivos (`index.html`, `main.js`, `AudioEngine.js`, `UIManager.js`, `Track.js`).
+* [ ] **1. Estructura del Proyecto:** Crear el layout de archivos (`index.html`, `main.js`, `AudioEngine.js`, `UIManager.js`, `AudioTrack.js`).
 * [ ] **2. `AudioEngine` Básico:** Implementar la clase `AudioEngine` para gestionar la instancia global de `Tone.Transport`.
 * [ ] **3. `UIManager` Mínimo:** Implementar controles de Play/Pause en la UI que se comuniquen con el `AudioEngine`.
 * [ ] **4. Clase `Track` Inicial:** Crear la clase `Track` que contenga un `Tone.Synth` y un `Tone.Sequence` con un patrón de notas predefinido (hard-coded).

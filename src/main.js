@@ -104,7 +104,8 @@ function init() {
                                     name: track.name,
                                     type: track instanceof InstrumentTrack ? 'instrument' : 'audio',
                                     position: position,
-                                    mode: track.mode // Pass the mode for instrument tracks
+                                    mode: track.mode, // Pass the mode for instrument tracks
+                                    color: track.color
                                 });
                             }
                         });
@@ -238,7 +239,8 @@ function init() {
                         id: newAudioTrack.id,
                         name: newAudioTrack.name,
                         type: 'audio',
-                        position: position
+                        position: position,
+                        color: newAudioTrack.color
                     });
                     audioEngine.setActiveTrack(newAudioTrack);
                     visualScene.setActiveTrackUI(newAudioTrack.id);
@@ -260,7 +262,8 @@ function init() {
                         name: newInstrumentTrack.name,
                         type: 'instrument',
                         position: position,
-                        mode: newInstrumentTrack.mode // Pass the initial mode
+                        mode: newInstrumentTrack.mode, // Pass the initial mode
+                        color: newInstrumentTrack.color
                     });
                     audioEngine.setActiveTrack(newInstrumentTrack);
                     visualScene.setActiveTrackUI(newInstrumentTrack.id);

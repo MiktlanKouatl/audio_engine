@@ -1,6 +1,52 @@
 
 import { Pane } from 'tweakpane';
 
+/**
+ * Determina si el color del texto debe ser blanco o negro en función de la luminancia del color de fondo.
+ * @param {string} hex - El color de fondo en formato hexadecimal (ej. '#RRGGBB').
+ * @returns {'#000000' | '#ffffff'} - El color de texto de contraste.
+ */
+function getContrastingTextColor(hex) {
+    if (hex.startsWith('#')) {
+        hex = hex.slice(1);
+    }
+    if (hex.length === 3) {
+        hex = hex.split('').map(char => char + char).join('');
+    }
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance > 0.5 ? '#000000' : '#ffffff';
+}
+
+/**
+ * Oscurece un color hexadecimal en un porcentaje determinado.
+ * @param {string} hex - El color en formato hexadecimal.
+ * @param {number} percent - El porcentaje para oscurecer (ej. 0.2 para 20%).
+ * @returns {string} - El nuevo color hexadecimal.
+ */
+function darkenColor(hex, percent) {
+    if (hex.startsWith('#')) {
+        hex = hex.slice(1);
+    }
+    if (hex.length === 3) {
+        hex = hex.split('').map(char => char + char).join('');
+    }
+    let f = parseInt(hex, 16),
+        t = 0, // Oscurecer hacia el negro
+        R = f >> 16,
+        G = (f >> 8) & 0x00FF,
+        B = f & 0x0000FF;
+
+    const newR = Math.round((t - R) * percent) + R;
+    const newG = Math.round((t - G) * percent) + G;
+    const newB = Math.round((t - B) * percent) + B;
+
+    return `#${(0x1000000 + newR * 0x10000 + newG * 0x100 + newB).toString(16).slice(1)}`;
+}
+
+
 export class ControlPanel {
     constructor(container, audioEngine, visualScene, sphereManager) {
         this.container = container;
@@ -21,18 +67,21 @@ export class ControlPanel {
             s.pointerEvents = 'auto';
             
         }
-        // Style the container so the control panel appears at the bottom-right
-        /* if (this.container && this.container.style) {
-            const s = this.container.style;
-            s.position = 'fixed';
-            s.right = '20px';
-            s.bottom = '20px';
-            s.width = '320px';
-            s.zIndex = '1000';
-            s.pointerEvents = 'auto';
-        } */
     }
 
+    _applyTheme(color) {
+        const bgColor = darkenColor(color, 0.4);
+        const textColor = getContrastingTextColor(bgColor);
+
+        this.container.style.setProperty('--tp-base-background-color', bgColor);
+        this.container.style.setProperty('--tp-base-foreground-color', textColor);
+        this.container.style.setProperty('--tp-input-background-color', darkenColor(bgColor, 0.1));
+        this.container.style.setProperty('--tp-input-foreground-color', textColor);
+        this.container.style.setProperty('--tp-label-foreground-color', textColor);
+        this.container.style.setProperty('--tp-button-background-color', bgColor);
+        this.container.style.setProperty('--tp-button-foreground-color', textColor);
+        this.container.style.setProperty('--tp-folder-foreground-color', textColor);
+    }
 
 
     showForTrack(track) {
@@ -40,10 +89,21 @@ export class ControlPanel {
             this.pane.dispose();
         }
 
+        const initialColor = track.color.toHexString ? track.color.toHexString() : track.color;
+        this._applyTheme(initialColor);
+
+
         this.pane = new Pane({
             container: this.container,
             title: 'Track Controls',
         });
+
+        this.pane.addBinding(track, 'color', { label: 'Color' })
+            .on('change', (ev) => {
+                const colorString = ev.value;
+                this._applyTheme(colorString);
+                this.visualScene.updateTrackColor(track.id, colorString);
+            });
 
         const params = {
             volume: track.channel.volume.value,

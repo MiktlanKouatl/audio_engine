@@ -1,29 +1,25 @@
-import { Synth, Player, Channel, PitchShift, Filter, Time, Meter } from 'tone';
+import { Player, PitchShift, Filter, Time, Meter } from 'tone';
+import { BaseTrack } from './BaseTrack.js';
 
-export class Track {
+export class AudioTrack extends BaseTrack {
     /**
      * @param {string} name El nombre de la pista.
      * @param {RecorderModule} recorderModule Una referencia al módulo de grabación global.
      */
     constructor(id, name, recorderModule, masterOut){
-        this.id = id;
-        this.name = name;
+        super(id, name, masterOut);
         this.recorderModule = recorderModule; // Referencia al grabador
         this.state = 'empty'; // empty | armed | recording | has_loop
-        this.isArmed = false;
 
-        this.pitchShift = new PitchShift(0);// Efecto de cambio de tono, inicializado a 0 semitonos
-        this.filter = new Filter(20000, 'lowpass'); // Un filtro pasa-bajas, abierto por defecto (20000Hz)
-        this.meter = new Meter(); // Medidor de nivel para el VU-metro
+        this.pitchShift = new PitchShift(0);
+        this.filter = new Filter(20000, 'lowpass');
+        this.meter = new Meter();
 
-        this.channel = new Channel({   
-                volume: -6,
-                pan: 0,
-                mute: false
-        }).connect(this.meter).connect(masterOut); // Conectamos el canal al medidor y luego al master
+        // Conectamos el medidor al canal que viene de BaseTrack
+        this.channel.connect(this.meter);
 
         this.player = new Player().chain(this.pitchShift, this.filter, this.channel);
-        this.player.loop = true; // Los loops de audio se repiten por defecto.
+        this.player.loop = true;
     }
 
     getLevel() {
@@ -72,21 +68,16 @@ export class Track {
 
     serialize() {
         if (this.state !== 'has_loop') return null;
+        const baseData = super.serialize();
         return {
+            ...baseData,
             type: 'audio',
-            name: this.name,
-            volume: this.channel.volume.value,
-            pan: this.channel.pan.value,
-            mute: this.channel.mute,
             audio: this.audioBlob
         };
     }
 
     async loadData(trackData) {
-        this.name = trackData.name;
-        this.channel.volume.value = trackData.volume;
-        this.channel.pan.value = trackData.pan;
-        this.channel.mute = trackData.mute;
+        super.loadData(trackData);
         
         if (trackData.audio instanceof Blob) {
             this.audioBlob = trackData.audio;
@@ -95,14 +86,6 @@ export class Track {
             this.player.sync().start(0);
             this.state = 'has_loop';
         }
-    }
-
-    setVolume(db) {
-        if (this.channel) this.channel.volume.value = db;
-    }
-
-    setPan(panValue) {
-        if (this.channel) this.channel.pan.value = panValue;
     }
 
     setPitch(semitones) {
@@ -117,20 +100,12 @@ export class Track {
         }
     }
 
-    toggleMute() {
-        if (this.channel) {
-            this.channel.mute = !this.channel.mute;
-            return this.channel.mute;
-        }
-        return false;
-    }
-
     dispose() {
         if (this.player) this.player.dispose();
-        if (this.channel) this.channel.dispose();
         if (this.pitchShift) this.pitchShift.dispose();
         if (this.filter) this.filter.dispose();
         if (this.meter) this.meter.dispose();
+        super.dispose(); // Llama al dispose de la clase base al final
     }
 
     exportToWAV() {

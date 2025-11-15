@@ -19,17 +19,15 @@ export class TrackWidget extends THREE.Group {
 
         // --- Botón de Selección (Círculo Principal) ---
         const selectGeo = new THREE.CircleGeometry(0.3, 32);
-        const selectMat = new THREE.MeshStandardMaterial({
-            color: trackData.type === 'instrument' ? 0x0074D9 : 0xFF4136,
-            metalness: 0.4,
-            roughness: 0.6,
+        const selectMat = new THREE.MeshBasicMaterial({
+            color: new THREE.Color(trackData.color || (trackData.type === 'instrument' ? 0x0074D9 : 0xFF4136)),
             side: THREE.DoubleSide
         });
-        const selectButton = new THREE.Mesh(selectGeo, selectMat);
-        selectButton.name = `track-select-${this.trackId}`;
-        this.add(selectButton);
-        interactiveControls.push(selectButton);
-        this.interactiveObjects.push(selectButton);
+        this.selectButton = new THREE.Mesh(selectGeo, selectMat);
+        this.selectButton.name = `track-select-${this.trackId}`;
+        this.add(this.selectButton);
+        interactiveControls.push(this.selectButton);
+        this.interactiveObjects.push(this.selectButton);
 
         // --- Indicador de Selección (Aro Verde) ---
         const indicatorGeo = new THREE.RingGeometry(0.32, 0.37, 32);
@@ -109,6 +107,10 @@ export class TrackWidget extends THREE.Group {
 
     setBounceSelected(isSelected) {
         this.bounceSelectionIndicator.visible = isSelected;
+    }
+
+    setColor(newColor) {
+        this.selectButton.material.color.set(newColor);
     }
 
     setArmed(isArmed, materials) {

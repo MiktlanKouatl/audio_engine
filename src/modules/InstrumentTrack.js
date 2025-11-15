@@ -1,15 +1,14 @@
-import { Volume, getTransport, Time } from 'tone';
+import { getTransport, Time } from 'tone';
 import { SOUND_BANK } from './SoundBank.js';
 import { pointToMusicalData } from './Notation.js';
+import { BaseTrack } from './BaseTrack.js';
 
-export class InstrumentTrack {
+export class InstrumentTrack extends BaseTrack {
     constructor(id, name, masterOut, gesturePlayer, initialMode = 'melodic') {
-        this.id = id;
-        this.name = name;
+        super(id, name, masterOut);
         this.state = 'empty'; // 'empty', 'armed', 'recording', 'has_sequence'
         this.transport = getTransport();
         this.gesturePlayer = gesturePlayer;
-        this.masterOut = masterOut;
 
         this.mode = null;
         this.synth = null;
@@ -18,7 +17,6 @@ export class InstrumentTrack {
         this.synthTriggerReleaseFunction = null;
         this.synthPlayPreviewFunction = null;
 
-        this.channel = new Volume(0).connect(masterOut);
         this.gesture = [];
 
         this.setMode(initialMode);
@@ -36,7 +34,8 @@ export class InstrumentTrack {
         }
 
         const modeConfig = SOUND_BANK[newMode];
-        this.synth = modeConfig.synth(this.channel);
+        // El this.channel es heredado de BaseTrack
+        this.synth = modeConfig.synth(this.channel); 
         this.synthMapFunction = modeConfig.map;
         this.synthTriggerAttackFunction = modeConfig.triggerAttack;
         this.synthTriggerReleaseFunction = modeConfig.triggerRelease;
@@ -45,6 +44,7 @@ export class InstrumentTrack {
         console.log(`Instrument mode for ${this.name} set to ${newMode}`);
     }
 
+    // ... (el resto de los métodos como handleInteraction, armRecord, etc. se mantienen igual)
     handleInteraction(data) {
         const { type, coords } = data;
         if (!this.synth) return;
@@ -172,8 +172,24 @@ export class InstrumentTrack {
         return this.gesture;
     }
 
+    serialize() {
+        const baseData = super.serialize();
+        return {
+            ...baseData,
+            type: 'instrument',
+            mode: this.mode,
+            // Nota: La 'gesture' no se está serializando aún.
+        };
+    }
+
+    loadData(data) {
+        super.loadData(data);
+        this.setMode(data.mode || 'melodic');
+        // Nota: La 'gesture' no se está cargando aún.
+    }
+
     dispose() {
         if (this.synth) this.synth.dispose();
-        if (this.channel) this.channel.dispose();
+        super.dispose();
     }
 }
