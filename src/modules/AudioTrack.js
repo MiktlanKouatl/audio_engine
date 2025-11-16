@@ -10,6 +10,7 @@ export class AudioTrack extends BaseTrack {
         super(id, name, masterOut);
         this.recorderModule = recorderModule; // Referencia al grabador
         this.state = 'empty'; // empty | armed | recording | has_loop
+        this.playbackOffset = 0; // en segundos
 
         this.pitchShift = new PitchShift(0);
         this.filter = new Filter(20000, 'lowpass');
@@ -24,6 +25,39 @@ export class AudioTrack extends BaseTrack {
 
     getLevel() {
         return this.meter.getValue();
+    }
+
+    schedulePlayback() {
+        if (!this.player.loaded || this.state !== 'has_loop') return;
+
+        // Desvincula la reproducción anterior del transporte antes de volver a sincronizar.
+        this.player.unsync();
+
+        const expectedDuration = Time(this.recorderModule.transport.loopEnd).toSeconds();
+        const actualDuration = this.player.buffer.duration;
+        const latencyCompensation = expectedDuration - actualDuration;
+        
+        // El offset del usuario (positivo=retraso) y la compensación de latencia se aplican al *tiempo* de inicio.
+        // Un `latencyCompensation` positivo (grabación más corta) debe adelantar el inicio, por eso se resta.
+        let transportStartTime = this.playbackOffset - latencyCompensation;
+        let bufferOffset = 0;
+
+        // Si el tiempo de inicio calculado es negativo, significa que el audio debería empezar antes del punto de loop.
+        // En lugar de un tiempo de transporte negativo (no permitido por Tone.js), iniciamos en 0
+        // y ajustamos el offset del buffer para simular el 'pre-roll'.
+        if (transportStartTime < 0) {
+            bufferOffset = -transportStartTime; // El buffer empieza 'bufferOffset' segundos antes.
+            transportStartTime = 0; // El transporte empieza en 0.
+        }
+
+        console.log(`[TRACK] Pista "${this.name}" | Duración esperada: ${expectedDuration.toFixed(2)}s, Duración real: ${actualDuration.toFixed(2)}s`);
+        console.log(`[TRACK] Pista "${this.name}" | Compensación de latencia: ${latencyCompensation.toFixed(3)}s`);
+        console.log(`[TRACK] Pista "${this.name}" | Offset de usuario: ${this.playbackOffset.toFixed(3)}s`);
+        console.log(`[TRACK] Pista "${this.name}" | Tiempo de inicio en transporte: ${transportStartTime.toFixed(3)}s`);
+        console.log(`[TRACK] Pista "${this.name}" | Offset en buffer: ${bufferOffset.toFixed(3)}s`);
+
+        // El primer parámetro es el tiempo de inicio (relativo al loop), el segundo es el offset *dentro del buffer de audio*.
+        this.player.sync().start(transportStartTime, bufferOffset);
     }
 
     /**
@@ -46,18 +80,9 @@ export class AudioTrack extends BaseTrack {
             this.audioBlob = await response.blob();
             
             await this.player.load(audioUrl);
-
-            const expectedDuration = Time(this.recorderModule.transport.loopEnd).toSeconds();
-            const actualDuration = this.player.buffer.duration;
-            const latencyCompensation = expectedDuration - actualDuration;
-
-            console.log(`[TRACK] Duración esperada: ${expectedDuration.toFixed(2)}s, Duración real: ${actualDuration.toFixed(2)}s`);
-            console.log(`[TRACK] Compensación de latencia calculada: ${latencyCompensation.toFixed(3)}s`);
-
-            this.player.sync().start(0, latencyCompensation);
-            console.log(`[TRACK] Player de "${this.name}" sincronizado con compensación.`);
-
             this.state = 'has_loop';
+            this.schedulePlayback(); // Usamos el nuevo método
+
             console.log(`✅ Loop grabado y listo en la pista "${this.name}".`);
 
         } catch (error) {
@@ -72,7 +97,8 @@ export class AudioTrack extends BaseTrack {
         return {
             ...baseData,
             type: 'audio',
-            audio: this.audioBlob
+            audio: this.audioBlob,
+            playbackOffset: this.playbackOffset // Guardar el offset
         };
     }
 
@@ -81,10 +107,11 @@ export class AudioTrack extends BaseTrack {
         
         if (trackData.audio instanceof Blob) {
             this.audioBlob = trackData.audio;
+            this.playbackOffset = trackData.playbackOffset || 0; // Cargar el offset
             const url = URL.createObjectURL(this.audioBlob);
             await this.player.load(url);
-            this.player.sync().start(0);
             this.state = 'has_loop';
+            this.schedulePlayback(); // Usamos el nuevo método
         }
     }
 

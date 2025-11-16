@@ -278,6 +278,20 @@ export class AudioEngine {
             this.transport.bpm.value = bpm;
         }
     }
+
+    /**
+     * Establece el offset de reproducción para una pista de audio específica.
+     * @param {number} trackId El ID de la pista a modificar.
+     * @param {number} offset El nuevo offset en segundos.
+     */
+    setTrackPlaybackOffset(trackId, offset) {
+        const track = this.tracks.find(t => t.id === trackId);
+        if (track && typeof track.schedulePlayback === 'function') {
+            track.playbackOffset = offset;
+            track.schedulePlayback();
+        }
+    }
+
     /**
      * Devuelve el compás actual dentro del loop maestro.
      * @returns {number} - El índice del compás actual (0-3) o -1 si está detenido.

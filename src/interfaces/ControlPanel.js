@@ -132,6 +132,18 @@ export class ControlPanel {
             track.setPan(ev.value);
         });
 
+        // Playback Offset for Audio Tracks
+        if (track.hasOwnProperty('playbackOffset')) {
+            this.pane.addBinding(track, 'playbackOffset', {
+                min: -0.5,
+                max: 0.5,
+                step: 0.001,
+                label: 'Playback Offset'
+            }).on('change', (ev) => {
+                this.audioEngine.setTrackPlaybackOffset(track.id, ev.value);
+            });
+        }
+
         // Botón de Mute
         this.pane.addBinding(track.channel, 'mute', {
             label: 'Mute'
